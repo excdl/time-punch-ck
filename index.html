@@ -175,9 +175,24 @@ async function updateUserInfo() {
 
     const ip = await getIP();
     const s = document.getElementById("statusInfo");
-    s.textContent = COMPANY_IPS.includes(ip) ? "公司網路" : "非公司網路";
-    s.style.color = COMPANY_IPS.includes(ip) ? "green" : "red";
+
+    if (COMPANY_IPS.includes(ip)) {
+        s.textContent = "公司網路";
+        s.style.color = "white";
+        s.style.backgroundColor = "green";   // 綠色背景
+    } else {
+        s.textContent = "非公司網路";
+        s.style.color = "white";
+        s.style.backgroundColor = "red";     // 紅色背景
+    }
+
+    // 保留橢圓形樣式
+    s.style.padding = "5px 15px";
+    s.style.borderRadius = "20px";
+    s.style.display = "inline-block";
+    s.style.fontWeight = "bold";
 }
+
 
 // ===== 動畫倒數（修正版）=====
 function startCountdownAnimation() {
