@@ -20,22 +20,26 @@ body {
 
 #dateTime { text-align:center; font-size:22px; margin-bottom:10px; }
 
+/* 使用半透明玻璃感的 user info */
 #userInfo, #statusInfo {
     text-align: center;
-    border-radius: 25px;
-    padding: 12px 30px;
+    border-radius: 20px;
+    padding: 15px 30px;
     margin-bottom: 15px;
     font-weight: bold;
-    color: #333;
-    background-color: #f2f2f2; 
-    border: none;
+    background: rgba(255, 255, 255, 0.8); /* 半透明白色 */
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(200,200,200,0.4);
     display: inline-block;
-    transition: transform 0.3s ease, background 0.3s ease;
+    transition: transform 0.3s ease, background 0.3s ease, box-shadow 0.3s ease;
+    color: #333;
 }
 
 #userInfo:hover, #statusInfo:hover {
     transform: translateY(-2px);
-    background-color: #e0e0e0;
+    background: rgba(255,255,255,0.9);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
 #userInfo { font-size: 28px; }
@@ -181,9 +185,10 @@ async function updateUserInfo() {
 
     const statusEl = document.getElementById("statusInfo");
     statusEl.textContent = isCompany ? "公司網路" : "非公司網路";
-    statusEl.style.backgroundColor = isCompany ? "#d4f4dd" : "#f8d4d4";
+    statusEl.style.backgroundColor = isCompany ? "rgba(212, 244, 221, 0.8)" : "rgba(248, 212, 212, 0.8)";
     statusEl.style.color = isCompany ? "green" : "red";
 }
+
 
 // ===== 動畫倒數（修正版）=====
 function startCountdownAnimation() {
