@@ -175,10 +175,10 @@ async function updateUserInfo() {
 
     showApproveButtonIfManager();
 
-    const ip = await getIP();
-    const s = document.getElementById("statusInfo");
-    s.textContent = COMPANY_IPS.includes(ip) ? "公司網路" : "非公司網路";
-    s.style.color = COMPANY_IPS.includes(ip) ? "green" : "red";
+    const statusEl = document.getElementById("statusInfo");
+    statusEl.textContent = isCompany ? "公司網路" : "非公司網路";
+    statusEl.style.backgroundColor = isCompany ? "#d4f4dd" : "#f8d4d4";
+    statusEl.style.color = isCompany ? "green" : "red";
 }
 
 // ===== 動畫倒數（修正版）=====
