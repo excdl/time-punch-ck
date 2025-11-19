@@ -14,62 +14,32 @@ body {
     flex-direction:column; 
     align-items:center; 
     margin:20px; 
-    background: #ffffff; /* 白色背景 */
+    background: #ffffff; 
     color: #333;
 }
 
 #dateTime { text-align:center; font-size:22px; margin-bottom:10px; }
 
-/* 彩色光暈 + 漸變玻璃質感的用戶信息 */
-#userInfo {
+#userInfo, #statusInfo {
     text-align: center;
-    font-size: 28px;
+    border-radius: 25px;
+    padding: 12px 30px;
     margin-bottom: 15px;
     font-weight: bold;
     color: #333;
-    background: rgba(255, 255, 255, 0.6); /* 半透明玻璃效果 */
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-radius: 25px;
-    padding: 12px 30px;
-    border: none; /* 去掉外框線 */
-    box-shadow: 0 8px 30px rgba(0,0,0,0.1),
-                0 0 20px rgba(123, 58, 255, 0.3); /* 彩色光暈 */
+    background-color: #f2f2f2; 
+    border: none;
     display: inline-block;
-    transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+    transition: transform 0.3s ease, background 0.3s ease;
 }
 
-#userInfo:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 12px 40px rgba(0,0,0,0.15),
-                0 0 30px rgba(123, 58, 255, 0.5);
-    background: rgba(255, 255, 255, 0.75);
+#userInfo:hover, #statusInfo:hover {
+    transform: translateY(-2px);
+    background-color: #e0e0e0;
 }
 
-/* 彩色光暈 + 漸變玻璃質感的狀態信息 */
-#statusInfo {
-    text-align: center;
-    font-size: 20px;
-    margin-bottom: 20px;
-    padding: 10px 28px;
-    border-radius: 30px;
-    display: inline-block;
-    color: #333;
-    background: rgba(255, 255, 255, 0.5); /* 半透明玻璃效果 */
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border: none; /* 去掉外框線 */
-    box-shadow: 0 6px 24px rgba(0,0,0,0.08),
-                0 0 15px rgba(255, 105, 180, 0.2); /* 彩色光暈 */
-    transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
-}
-
-#statusInfo:hover {
-    transform: scale(1.05);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.15),
-                0 0 25px rgba(255, 105, 180, 0.4);
-    background: rgba(255, 255, 255, 0.65);
-}
+#userInfo { font-size: 28px; }
+#statusInfo { font-size: 26px; } /* 放大 30% */
 
 .buttons-container {
     display:flex;
@@ -100,31 +70,18 @@ button:active {
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
-/* 按鈕顏色漸層 */
-#btnStart { 
-    background: linear-gradient(145deg, #3498db, #2980b9); 
-    color:white; 
-    box-shadow: 0 4px 8px rgba(52,152,219,0.3); 
-} 
-#btnEnd { 
-    background: linear-gradient(145deg, #2ecc71, #27ae60); 
-    color:white; 
-    box-shadow: 0 4px 8px rgba(46,204,113,0.3); 
-}   
-#btnMakeup { 
-    background: linear-gradient(145deg, #f39c12, #d35400); 
-    color:white; 
-    box-shadow: 0 4px 8px rgba(243,156,18,0.3); 
-} 
+#btnStart { background: linear-gradient(145deg, #3498db, #2980b9); color:white; } 
+#btnEnd { background: linear-gradient(145deg, #2ecc71, #27ae60); color:white; }   
+#btnMakeup { background: linear-gradient(145deg, #f39c12, #d35400); color:white; }
 
 #todayRecords { 
     margin-top:20px; 
     width:90%; 
-    border:none; /* 去掉外框線 */
+    border:1px solid #ccc; 
     padding:10px; 
     border-radius:8px; 
     min-height:50px; 
-    background: rgba(255,255,255,0.6); /* 半透明背景 */
+    background: #ffffff; 
 }
 
 #countdownWrapper { 
@@ -185,12 +142,10 @@ button:active {
 ">補打卡審批</button>
 
 <script>
-// ===== 設定 =====
 const API_ENDPOINT = "https://script.google.com/macros/s/AKfycbzCTR2Rv9PtbkbSKntjP6psKQCfu8z59t4Y2wyas-to_tqOyYwBZx952S-L4w1IQGIngg/exec";
 const COMPANY_IPS = ["114.34.60.48"];
 const MANAGERS = ["U76174e2a9654ab2c7b1f037b28cb6c86","U7fdf4fbd467b9a93a23fac01ed03351b"];
 
-// ===== 日期時間 =====
 function updateDateTime() {
     const now = new Date();
     document.getElementById("dateTime").textContent =
@@ -199,19 +154,16 @@ function updateDateTime() {
 setInterval(updateDateTime, 1000);
 updateDateTime();
 
-// ===== 取得 IP =====
 async function getIP() {
     try { return (await (await fetch("https://api.ipify.org?format=json")).json()).ip; }
     catch { return ""; }
 }
 
-// ===== 顯示主管按鈕 =====
 function showApproveButtonIfManager() {
     document.getElementById("btnApprove").style.display =
         MANAGERS.includes(window.userId) ? "block" : "none";
 }
 
-// ===== 取得 LINE 使用者 =====
 async function updateUserInfo() {
     await liff.init({ liffId: "2008499734-ln2NqWRr" });
     if (!liff.isLoggedIn()) return liff.login();
@@ -229,7 +181,7 @@ async function updateUserInfo() {
 
     const statusEl = document.getElementById("statusInfo");
     statusEl.textContent = isCompany ? "公司網路" : "非公司網路";
-    statusEl.style.backgroundColor = isCompany ? "rgba(212, 244, 221,0.7)" : "rgba(248, 212, 212,0.7)";
+    statusEl.style.backgroundColor = isCompany ? "#d4f4dd" : "#f8d4d4";
     statusEl.style.color = isCompany ? "green" : "red";
 }
 
