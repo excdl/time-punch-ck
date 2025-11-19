@@ -179,11 +179,11 @@ async function updateUserInfo() {
     if (COMPANY_IPS.includes(ip)) {
         s.textContent = "公司網路";
         s.style.color = "white";
-        s.style.backgroundColor = "green";   // 綠色背景
+        s.style.backgroundColor = "rgba(0,128,0,0.3)";   // 淡綠背景
     } else {
         s.textContent = "非公司網路";
         s.style.color = "white";
-        s.style.backgroundColor = "red";     // 紅色背景
+        s.style.backgroundColor = "rgba(255,0,0,0.3)";     // 淡紅背景
     }
 
     // 保留橢圓形樣式
@@ -191,7 +191,9 @@ async function updateUserInfo() {
     s.style.borderRadius = "20px";
     s.style.display = "inline-block";
     s.style.fontWeight = "bold";
+    s.style.transition = "background-color 0.3s, color 0.3s"; // 變色過渡更柔和
 }
+
 
 
 // ===== 動畫倒數（修正版）=====
