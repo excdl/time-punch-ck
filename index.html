@@ -178,12 +178,12 @@ async function updateUserInfo() {
 
     if (COMPANY_IPS.includes(ip)) {
         s.textContent = "公司網路";
-        s.style.color = "white";
-        s.style.backgroundColor = "rgba(0,128,0,0.3)";   // 淡綠背景
+        s.style.color = "#008000";               // 綠色文字
+        s.style.backgroundColor = "rgba(144,238,144,0.3)"; // 淺綠背景
     } else {
         s.textContent = "非公司網路";
-        s.style.color = "white";
-        s.style.backgroundColor = "rgba(255,0,0,0.3)";     // 淡紅背景
+        s.style.color = "#FF0000";               // 紅色文字
+        s.style.backgroundColor = "rgba(255,182,193,0.3)"; // 淺粉背景
     }
 
     // 保留橢圓形樣式
@@ -191,8 +191,9 @@ async function updateUserInfo() {
     s.style.borderRadius = "20px";
     s.style.display = "inline-block";
     s.style.fontWeight = "bold";
-    s.style.transition = "background-color 0.3s, color 0.3s"; // 變色過渡更柔和
+    s.style.transition = "background-color 0.3s, color 0.3s"; // 平滑過渡
 }
+
 
 
 
