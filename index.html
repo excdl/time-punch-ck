@@ -72,13 +72,16 @@ function updateDateTime() {
 setInterval(updateDateTime, 1000);
 updateDateTime();
 
-// ====== 取得 IP ======
+// ====== 取得 IP (加入快取與超時防呆) ======
 async function getIP() {
     const cache = sessionStorage.getItem("myIP");
     if (cache) return cache;
 
     try {
-        const res = await fetch("https://api.ipify.org?format=json");
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000); // 4秒逾時
+        const res = await fetch("https://api.ipify.org?format=json", { signal: controller.signal });
+        clearTimeout(timeoutId);
         const data = await res.json();
         sessionStorage.setItem("myIP", data.ip);
         return data.ip;
@@ -105,7 +108,7 @@ function getGeoLocation() {
                 console.warn("無法取得 GPS 座標: ", error.message);
                 resolve({ lat: "", lng: "" });
             },
-            { timeout: 10000, enableHighAccuracy: true }
+            { timeout: 8000, enableHighAccuracy: true }
         );
     });
 }
@@ -129,68 +132,80 @@ btnEnd.disabled = true;
 window.userReady = false;
 window.allowRemote = false;
 
-// ====== 初始化使用者、IP 與遠端權限檢查 ======
+// ====== 初始化使用者、IP 與遠端權限檢查 (已優化並行加速) ======
 async function updateUserInfo() {
-    const liffInit = liff.init({ liffId: "2008520938-4018BD8v" });
-
-    const [_, ip] = await Promise.all([
-        liffInit,
-        getIP()
-    ]);
-
-    if (!liff.isLoggedIn()) {
-        await liff.login();
-    }
-
-    const [profile, finalIP] = await Promise.all([
-        liff.getProfile(),
-        getIP()
-    ]);
-
-    window.userId = profile.userId;
-    window.userName = profile.displayName;
-
-    document.getElementById("userInfo").textContent = `${window.userName} 您好`;
-    document.getElementById("btnApprove").style.display = MANAGERS.includes(window.userId) ? "block" : "none";
-
-    // 查詢後端確認該用戶是否允許異地
-    try {
-        const remoteRes = await fetch(`${API_ENDPOINT}?action=checkRemote&userId=${window.userId}`);
-        const remoteData = await remoteRes.json();
-        window.allowRemote = remoteData.allowed;
-    } catch(err) {
-        console.error("查詢允許異地失敗", err);
-        window.allowRemote = false;
-    }
-
     const s = document.getElementById("statusInfo");
-    const isCompany = COMPANY_IPS.includes(finalIP);
-
-    if (isCompany || window.allowRemote) {
-        // ★ 有效打卡區：解鎖上班與下班按鈕
-        s.textContent = "有效打卡區";
-        s.style.color = "#008000";
-        s.style.backgroundColor = "rgba(144,238,144,0.6)";
-        btnStart.disabled = false;
-        btnEnd.disabled = false;
-        window.userReady = true;
-    } else {
-        // ★ 無效打卡區：鎖住上班與下班按鈕
-        s.textContent = "無效打卡區";
-        s.style.color = "#FF0000";
-        s.style.backgroundColor = "rgba(255,182,193,0.3)";
-        btnStart.disabled = true;
-        btnEnd.disabled = true;
-        window.userReady = false;
-    }
-
+    
+    // 需求 1：畫面未顯示狀態時先顯示網路與定位初始化
+    s.textContent = "網路與定位初始化中…";
+    s.style.color = "#555555";
+    s.style.backgroundColor = "rgba(200,200,200,0.5)";
     s.style.padding = "5px 15px";
     s.style.borderRadius = "20px";
     s.style.display = "inline-block";
     s.style.fontWeight = "bold";
-}
 
-document.addEventListener("DOMContentLoaded", updateUserInfo);
+    try {
+        const liffInit = liff.init({ liffId: "2008520938-4018BD8v" });
+
+        // 同步並行初始化 LIFF、取得 IP
+        await Promise.all([liffInit, getIP()]);
+
+        if (!liff.isLoggedIn()) {
+            await liff.login();
+            return;
+        }
+
+        // 同步並行取得使用者 Profile 與最終 IP
+        const [profile, finalIP] = await Promise.all([
+            liff.getProfile(),
+            getIP()
+        ]);
+
+        window.userId = profile.userId;
+        window.userName = profile.displayName;
+
+        document.getElementById("userInfo").textContent = `${window.userName} 您好`;
+        document.getElementById("btnApprove").style.display = MANAGERS.includes(window.userId) ? "block" : "none";
+
+        // 需求 2：加速取得後端異地特許權限 (同時發送網路 IP 判斷與後端查詢)
+        const isCompany = COMPANY_IPS.includes(finalIP);
+
+        let remoteAllowed = false;
+        if (!isCompany) {
+            try {
+                const remoteRes = await fetch(`${API_ENDPOINT}?action=checkRemote&userId=${window.userId}`);
+                const remoteData = await remoteRes.json();
+                remoteAllowed = remoteData.allowed || false;
+            } catch(err) {
+                console.error("查詢允許異地失敗", err);
+            }
+        }
+        window.allowRemote = remoteAllowed;
+
+        if (isCompany || window.allowRemote) {
+            s.textContent = "有效打卡區";
+            s.style.color = "#008000";
+            s.style.backgroundColor = "rgba(144,238,144,0.6)";
+            btnStart.disabled = false;
+            btnEnd.disabled = false;
+            window.userReady = true;
+        } else {
+            s.textContent = "無效打卡區";
+            s.style.color = "#FF0000";
+            s.style.backgroundColor = "rgba(255,182,193,0.3)";
+            btnStart.disabled = true;
+            btnEnd.disabled = true;
+            window.userReady = false;
+        }
+
+    } catch (err) {
+        console.error("初始化失敗:", err);
+        s.textContent = "初始化異常，請重新整理";
+        s.style.color = "#FF0000";
+        s.style.backgroundColor = "rgba(255,182,193,0.3)";
+    }
+}
 
 /* ===== 打卡後發送 Flex Message ===== */
 async function sendSelfMessage(record) {
