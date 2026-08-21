@@ -147,7 +147,7 @@ async function updateStatus(forceRefresh = false) {
     window.allowRemote = remoteAllowed;
 
     if (remoteAllowed) {
-        statusInfo.textContent = "有效打卡區 (異地特許)";
+        statusInfo.textContent = "有效打卡區 (異地)";
         statusInfo.style.background = "#2ecc71";
         setButtonsLock(false, "上班", "下班");
     } else {
