@@ -185,7 +185,10 @@ async function updateUserInfo() {
             s.style.backgroundColor = "#2ecc71";
             btnStart.disabled = false;
             btnEnd.disabled = false;
+            btnStart.textContent = "上班"; // ★ 補上這行
+            btnEnd.textContent = "下班";   // ★ 補上這行
             window.userReady = true;
+        }
         } else {
             s.textContent = "無效打卡區";
             s.style.color = "#ffffff";
