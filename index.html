@@ -1,125 +1,27 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>奇可智能打卡系統</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>智能打卡系統</title>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-body { 
-    font-family: Arial; 
-    display:flex; 
-    justify-content:center; 
-    padding:20px; 
-    background:#f5f6fa;
-    margin:0;
-}
+body {font-family:"Arial","Noto Sans TC",sans-serif;background:#f0f4f8;display:flex;justify-content:center;padding:20px;margin:0;}
+.card {background:#fff;width:95%;max-width:480px;border-radius:20px;padding:25px 20px;display:flex;flex-direction:column;align-items:center;gap:20px;box-shadow:0 15px 30px rgba(0,0,0,0.15);}
+#userInfo {font-size:28px;font-weight:bold;text-align:center;color:#2c3e50;}
+#dateTime {font-size:22px;color:#7f8c8d;text-align:center;}
+#statusInfo {font-size:20px;color:white;padding:8px 25px;border-radius:25px;text-align:center;min-width:180px;}
+.buttons-container {display:flex;gap:15px;width:100%;}
+.buttons-container button {flex:1;padding:15px 0;font-size:22px;font-weight:bold;border-radius:12px;border:none;cursor:pointer;color:white;transition:all 0.2s;}
 
-/* 控制面板卡片 */
-#controlPanel {
-    background:white;
-    padding:25px 20px;
-    border-radius:15px;
-    box-shadow:0 8px 20px rgba(0,0,0,0.1);
-    width:95%;
-    max-width:500px;
-    display:flex;
-    flex-direction:column;
-    gap:20px;
-    align-items:center;
-    box-sizing:border-box;
-}
+/* 🚀 優化點：更改按鈕顏色（上班：橘色 / 下班：藍色） */
+#btnStart {background: linear-gradient(135deg, #ff9f43, #ee5253);}
+#btnEnd {background: linear-gradient(135deg, #3498db, #2980b9);}
 
-/* 使用者資訊 */
-#userInfo { text-align:center; font-size:26px; font-weight:bold; }
-
-/* 狀態訊息 */
-#statusInfo { text-align:center; font-size:23px; padding:5px 15px; border-radius:20px; display:inline-block; }
-
-/* 日期時間 */
-#dateTime { text-align:center; font-size:22px; }
-
-/* 打卡按鈕區 */
-.buttons-container {
-    display:flex;
-    gap:10px;
-    width:100%;
-    flex-wrap:nowrap; /* 永不換行 */
-}
-.buttons-container button { 
-    flex:1 1 0; /* 平分寬度 */
-    min-width:80px;
-    padding:10px 0; 
-    font-size:25px; 
-    border-radius:8px; 
-    cursor:pointer; 
-    font-weight:bold; 
-    border:none;
-    white-space:nowrap; 
-    transition: all 0.2s ease;
-}
-.buttons-container button:hover{
-    transform: translateY(-2px);
-    box-shadow: 0 6px 12px rgba(0,0,0,0.1);
-}
-.buttons-container button:active{
-    transform: translateY(1px);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-}
-#btnStart { background: linear-gradient(145deg, #3498db, #2980b9); color:white; } 
-#btnEnd { background: linear-gradient(145deg, #2ecc71, #27ae60); color:white; }   
-#btnMakeup { background: linear-gradient(145deg, #f39c12, #d35400); color:white; } 
-
-/* 倒數動畫 */
-#countdownWrapper { width:120px; height:120px; position:relative; display:none; }
-#circleProgress { fill:none; stroke-width:12; stroke-linecap:round; transform: rotate(-90deg); transform-origin: 50% 50%; }
-#countdownText { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-weight:bold; white-space:nowrap; }
-
-/* 查詢區塊 */
-#querySection { width:100%; display:flex; flex-direction:column; gap:10px; }
-#querySection .queryRow {
-    display:flex; 
-    gap:10px;
-    width:100%;
-    flex-wrap:nowrap; /* 永不換行 */
-    align-items:center;
-}
-
-#querySection input[type="date"] {
-    flex:1 1 auto; /* 日期欄占剩餘空間 */
-    min-width:100px;
-    padding:8px 10px; 
-    font-size:14px; 
-    border-radius:6px; 
-    border:1px solid #ccc;
-    box-sizing:border-box;
-}
-
-#querySection button {
-    flex:1 1 0; /* 查詢和返回平分剩餘寬度 */
-    padding:8px 0;
-    font-size:14px;
-    font-weight:bold;
-    border-radius:6px;
-    border:none;
-    cursor:pointer;
-    white-space:nowrap;
-}
-
-#btnQuery { background:#d3d3d3; color:black; }  
-#btnReturn { background:#d3d3d3; color:black; }  
-
-#todayRecords {
-    border:1px solid #ccc; 
-    border-radius:8px; 
-    padding:10px; 
-    min-height:50px; 
-    font-size:16px; 
-    background: #fafafa;
-    width:100%; 
-    box-sizing:border-box;
-}
+button:disabled {opacity:0.5;cursor:not-allowed;}
+#todayRecords {width:100%;background:#fafafa;border-radius:14px;padding:15px;border:1px solid #ddd;font-size:18px;text-align:left;}
+#todayRecords span {display:block;margin-bottom:5px;padding-left:5px;border-left:3px solid #3498db;}
 
 /* 主管審批按鈕 */
 #btnApprove {
@@ -139,54 +41,19 @@ body {
     transform: translateY(-2px);
     box-shadow: 0 4px 10px rgba(0,0,0,0.1);
 }
-
-/* 響應式文字縮放 */
-@media(max-width:400px){
-    .buttons-container button{
-        font-size:20px; /* 手機上文字縮小 */
-    }
-    #querySection input[type="date"]{
-        font-size:13px;
-    }
-    #querySection button{
-        font-size:13px;
-    }
-}
 </style>
 </head>
 <body>
-
-<div id="controlPanel">
-    <div id="userInfo">正在獲取使用者資訊...</div>
-    <div id="statusInfo"></div>
-    <div id="dateTime">載入中…</div>
-
-    <!-- 打卡按鈕 -->
-    <div class="buttons-container">
-        <button id="btnStart">上班</button>
-        <button id="btnEnd">下班</button>
-        <button id="btnMakeup">補打卡</button>
-    </div>
-
-    <!-- 倒數動畫 -->
-    <div id="countdownWrapper">
-        <svg width="120" height="120">
-            <circle id="circleProgress" cx="60" cy="60" r="50"></circle>
-        </svg>
-        <div id="countdownText">打卡中...</div>
-    </div>
-
-    <!-- 查詢區塊 -->
-    <div id="querySection">
-        <div class="queryRow">
-            <input type="date" id="queryDate">
-            <button id="btnQuery" onclick="searchDateRecords()">查詢</button>
-            <button id="btnReturn" onclick="clearSearch()">返回</button>
-        </div>
-        <div id="todayRecords">今日打卡紀錄：</div>
-    </div>
-
-    <button id="btnApprove">補打卡審批</button>
+<div class="card">
+  <div id="userInfo">載入使用者資訊中...</div>
+  <div id="statusInfo">定位確認中…</div>
+  <div id="dateTime">載入中…</div>
+  <div class="buttons-container">
+    <button id="btnStart" disabled>定位中…</button>
+    <button id="btnEnd" disabled>定位中…</button>
+  </div>
+  <div id="todayRecords">今日打卡紀錄（點擊更新）</div>
+  <button id="btnApprove">查看 | 簽核</button>
 </div>
 
 <script>
