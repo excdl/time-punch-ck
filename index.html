@@ -72,6 +72,12 @@ function updateDateTime() {
 setInterval(updateDateTime, 1000);
 updateDateTime();
 
+// ====== 取得今日日期字串 (YYYY/MM/DD) ======
+function getTodayString() {
+    const now = new Date();
+    return now.toLocaleDateString("zh-TW", { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, "/");
+}
+
 // ====== 取得 IP ======
 async function getIP() {
     const cache = sessionStorage.getItem("myIP");
@@ -123,6 +129,8 @@ function fixTimeFormat(t) {
 
 const btnStart = document.getElementById("btnStart");
 const btnEnd   = document.getElementById("btnEnd");
+const todayRecords = document.getElementById("todayRecords");
+const statusInfo = document.getElementById("statusInfo");
 
 btnStart.disabled = true;
 btnEnd.disabled = true;
@@ -131,24 +139,35 @@ window.allowRemote = false;
 
 // ====== 初始化使用者、IP 與遠端權限檢查 ======
 async function updateUserInfo() {
-    const liffInit = liff.init({ liffId: "2008520938-4018BD8v" });
+    statusInfo.textContent = "定位確認中…";
+    statusInfo.style.background = "#95a5a6";
 
-    const [_, ip] = await Promise.all([
-        liffInit,
-        getIP()
-    ]);
-
-    if (!liff.isLoggedIn()) {
-        await liff.login();
+    try {
+        await liff.init({ liffId: "2008520938-4018BD8v" });
+    } catch (err) {
+        console.error("LIFF 初始化失敗:", err);
     }
 
-    const [profile, finalIP] = await Promise.all([
-        liff.getProfile(),
-        getIP()
-    ]);
+    if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+    }
 
-    window.userId = profile.userId;
-    window.userName = profile.displayName;
+    let profile = {};
+    let finalIP = "";
+    try {
+        const [userProfile, ip] = await Promise.all([
+            liff.getProfile(),
+            getIP()
+        ]);
+        profile = userProfile;
+        finalIP = ip;
+    } catch (err) {
+        console.error("取得 Profile 或 IP 失敗:", err);
+    }
+
+    window.userId = profile.userId || "";
+    window.userName = profile.displayName || "使用者";
 
     document.getElementById("userInfo").textContent = `${window.userName} 您好`;
     document.getElementById("btnApprove").style.display = MANAGERS.includes(window.userId) ? "block" : "none";
@@ -163,36 +182,33 @@ async function updateUserInfo() {
         window.allowRemote = false;
     }
 
-    const s = document.getElementById("statusInfo");
     const isCompany = COMPANY_IPS.includes(finalIP);
 
     if (isCompany || window.allowRemote) {
         // ★ 有效打卡區：解鎖上班與下班按鈕
-        s.textContent = "有效打卡區";
-        s.style.color = "#008000";
-        s.style.backgroundColor = "rgba(144,238,144,0.6)";
+        statusInfo.textContent = "有效打卡區";
+        statusInfo.style.color = "#008000";
+        statusInfo.style.backgroundColor = "rgba(144,238,144,0.6)";
         btnStart.disabled = false;
         btnEnd.disabled = false;
         window.userReady = true;
     } else {
         // ★ 無效打卡區：鎖住上班與下班按鈕
-        s.textContent = "無效打卡區";
-        s.style.color = "#FF0000";
-        s.style.backgroundColor = "rgba(255,182,193,0.3)";
+        statusInfo.textContent = "無效打卡區";
+        statusInfo.style.color = "#FF0000";
+        statusInfo.style.backgroundColor = "rgba(255,182,193,0.3)";
         btnStart.disabled = true;
         btnEnd.disabled = true;
         window.userReady = false;
     }
 
-    s.style.padding = "5px 15px";
-    s.style.borderRadius = "20px";
-    s.style.display = "inline-block";
-    s.style.fontWeight = "bold";
+    statusInfo.style.padding = "5px 15px";
+    statusInfo.style.borderRadius = "20px";
+    statusInfo.style.display = "inline-block";
+    statusInfo.style.fontWeight = "bold";
 }
 
-document.addEventListener("DOMContentLoaded", updateUserInfo);
-
-/* ===== 打卡後發送 Flex Message ===== */
+// ===== 打卡後發送 Flex Message =====
 async function sendSelfMessage(record) {
     if (!liff.isInClient()) return;
 
@@ -355,6 +371,7 @@ async function updateTodayRecords(){
     todayRecords.innerHTML="今日打卡紀錄：讀取失敗";
   }
 }
+
 document.getElementById("btnStart").onclick = () => performClockIn("上班");
 document.getElementById("btnEnd").onclick = () => performClockIn("下班");
 
@@ -362,43 +379,17 @@ document.getElementById("btnApprove").onclick = () => {
     window.location.href = "https://script.google.com/macros/s/AKfycbyxXrvVxfgwrI-SdXM03QEYxEpG-xqyjVQcxdNz1IBK3DtFC-kUFjHhRaNtgXNU-Mdu/exec";
 };
 
-/* ===== 初始化載入 (極速秒開版) ===== */
+// ===== 初始化載入 =====
 window.onload = async () => {
-  statusInfo.textContent = "正在檢查網路狀態...";
-  statusInfo.style.background = "#95a5a6";
-  setButtonsLock(true, "同步中...", "同步中...");
-
-  // 背景啟動 GPS 監聽
-  initGPSWatcher();
-
-  try {
-    // 1. 同時取得 LIFF 姓名與外網 IP
-    await Promise.all([
-      initUser(),
-      preloadIP()
-    ]);
-    
-    // 2. 資料就緒
-    dataReady = true;
-
-    // 3. 立即進行第一次狀態判斷（此時若 IP 符合會秒開打卡區）
-    await updateStatus(true);
-
-    // 4. 同時在背景載入今日打卡紀錄與主管清單
-    await Promise.all([
-      updateTodayRecords(),
-      loadManagers()
-    ]);
-    
-    // 5. 確保主管身分載入後再刷新一次狀態（避免主管權限慢一步）
-    await updateStatus(true);
-
-  } catch (error) {
-    console.error("初始化失敗", error);
-    userInfo.textContent = "初始化失敗";
-    statusInfo.textContent = "請重新整理網頁";
-    statusInfo.style.background = "#e74c3c";
-  }
+    try {
+        await updateUserInfo();
+        await updateTodayRecords();
+    } catch (error) {
+        console.error("初始化失敗", error);
+        document.getElementById("userInfo").textContent = "初始化失敗";
+        statusInfo.textContent = "請重新整理網頁";
+        statusInfo.style.background = "#e74c3c";
+    }
 };
 </script>
 
