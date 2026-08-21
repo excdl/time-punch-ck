@@ -365,9 +365,43 @@ document.getElementById("btnApprove").onclick = () => {
     window.location.href = "https://script.google.com/macros/s/AKfycbyxXrvVxfgwrI-SdXM03QEYxEpG-xqyjVQcxdNz1IBK3DtFC-kUFjHhRaNtgXNU-Mdu/exec";
 };
 
+/* ===== 初始化載入 (極速秒開版) ===== */
 window.onload = async () => {
-    await updateUserInfo();
-    await updateTodayRecords();
+  statusInfo.textContent = "正在檢查網路狀態...";
+  statusInfo.style.background = "#95a5a6";
+  setButtonsLock(true, "同步中...", "同步中...");
+
+  // 背景啟動 GPS 監聽
+  initGPSWatcher();
+
+  try {
+    // 1. 同時取得 LIFF 姓名與外網 IP
+    await Promise.all([
+      initUser(),
+      preloadIP()
+    ]);
+    
+    // 2. 資料就緒
+    dataReady = true;
+
+    // 3. 立即進行第一次狀態判斷（此時若 IP 符合會秒開打卡區）
+    await updateStatus(true);
+
+    // 4. 同時在背景載入今日打卡紀錄與主管清單
+    await Promise.all([
+      updateTodayRecords(),
+      loadManagers()
+    ]);
+    
+    // 5. 確保主管身分載入後再刷新一次狀態（避免主管權限慢一步）
+    await updateStatus(true);
+
+  } catch (error) {
+    console.error("初始化失敗", error);
+    userInfo.textContent = "初始化失敗";
+    statusInfo.textContent = "請重新整理網頁";
+    statusInfo.style.background = "#e74c3c";
+  }
 };
 </script>
 
