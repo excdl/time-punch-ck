@@ -72,12 +72,6 @@ function updateDateTime() {
 setInterval(updateDateTime, 1000);
 updateDateTime();
 
-// ====== 取得今日日期字串 (YYYY/MM/DD) ======
-function getTodayString() {
-    const now = new Date();
-    return now.toLocaleDateString("zh-TW", { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, "/");
-}
-
 // ====== 取得 IP ======
 async function getIP() {
     const cache = sessionStorage.getItem("myIP");
@@ -129,8 +123,6 @@ function fixTimeFormat(t) {
 
 const btnStart = document.getElementById("btnStart");
 const btnEnd   = document.getElementById("btnEnd");
-const todayRecords = document.getElementById("todayRecords");
-const statusInfo = document.getElementById("statusInfo");
 
 btnStart.disabled = true;
 btnEnd.disabled = true;
@@ -139,35 +131,24 @@ window.allowRemote = false;
 
 // ====== 初始化使用者、IP 與遠端權限檢查 ======
 async function updateUserInfo() {
-    statusInfo.textContent = "定位確認中…";
-    statusInfo.style.background = "#95a5a6";
+    const liffInit = liff.init({ liffId: "2008520938-4018BD8v" });
 
-    try {
-        await liff.init({ liffId: "2008520938-4018BD8v" });
-    } catch (err) {
-        console.error("LIFF 初始化失敗:", err);
-    }
+    const [_, ip] = await Promise.all([
+        liffInit,
+        getIP()
+    ]);
 
     if (!liff.isLoggedIn()) {
-        liff.login();
-        return;
+        await liff.login();
     }
 
-    let profile = {};
-    let finalIP = "";
-    try {
-        const [userProfile, ip] = await Promise.all([
-            liff.getProfile(),
-            getIP()
-        ]);
-        profile = userProfile;
-        finalIP = ip;
-    } catch (err) {
-        console.error("取得 Profile 或 IP 失敗:", err);
-    }
+    const [profile, finalIP] = await Promise.all([
+        liff.getProfile(),
+        getIP()
+    ]);
 
-    window.userId = profile.userId || "";
-    window.userName = profile.displayName || "使用者";
+    window.userId = profile.userId;
+    window.userName = profile.displayName;
 
     document.getElementById("userInfo").textContent = `${window.userName} 您好`;
     document.getElementById("btnApprove").style.display = MANAGERS.includes(window.userId) ? "block" : "none";
@@ -182,33 +163,36 @@ async function updateUserInfo() {
         window.allowRemote = false;
     }
 
+    const s = document.getElementById("statusInfo");
     const isCompany = COMPANY_IPS.includes(finalIP);
 
     if (isCompany || window.allowRemote) {
         // ★ 有效打卡區：解鎖上班與下班按鈕
-        statusInfo.textContent = "有效打卡區";
-        statusInfo.style.color = "#008000";
-        statusInfo.style.backgroundColor = "rgba(144,238,144,0.6)";
+        s.textContent = "有效打卡區";
+        s.style.color = "#008000";
+        s.style.backgroundColor = "rgba(144,238,144,0.6)";
         btnStart.disabled = false;
         btnEnd.disabled = false;
         window.userReady = true;
     } else {
         // ★ 無效打卡區：鎖住上班與下班按鈕
-        statusInfo.textContent = "無效打卡區";
-        statusInfo.style.color = "#FF0000";
-        statusInfo.style.backgroundColor = "rgba(255,182,193,0.3)";
+        s.textContent = "無效打卡區";
+        s.style.color = "#FF0000";
+        s.style.backgroundColor = "rgba(255,182,193,0.3)";
         btnStart.disabled = true;
         btnEnd.disabled = true;
         window.userReady = false;
     }
 
-    statusInfo.style.padding = "5px 15px";
-    statusInfo.style.borderRadius = "20px";
-    statusInfo.style.display = "inline-block";
-    statusInfo.style.fontWeight = "bold";
+    s.style.padding = "5px 15px";
+    s.style.borderRadius = "20px";
+    s.style.display = "inline-block";
+    s.style.fontWeight = "bold";
 }
 
-// ===== 打卡後發送 Flex Message =====
+document.addEventListener("DOMContentLoaded", updateUserInfo);
+
+/* ===== 打卡後發送 Flex Message ===== */
 async function sendSelfMessage(record) {
     if (!liff.isInClient()) return;
 
@@ -346,30 +330,32 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
     updateTodayRecords();
 }
 
-/* ===== 今日紀錄 ===== */
-async function updateTodayRecords(){
-  todayRecords.innerHTML="載入中...";
-  try{
-    const res = await fetch(`${API_ENDPOINT}?action=getToday&userId=${userId}&date=${getTodayString()}`);
-    const data = await res.json();
+// ===== 取得今日紀錄 =====
+async function updateTodayRecords() {
+    if (!window.userId) return;
+    const now = new Date();
+    const today = now.toLocaleDateString("zh-TW").replace(/\//g, "/");
 
-    if(!data.length){
-      todayRecords.innerHTML="今日打卡紀錄：無";
-      return;
+    try {
+        const res = await fetch(`${API_ENDPOINT}?action=getToday&userId=${window.userId}&date=${today}`);
+        const data = await res.json();
+
+        const container = document.getElementById("todayRecords");
+        if (!data.length) {
+            container.innerHTML = "今日打卡紀錄：無";
+            return;
+        }
+
+        container.innerHTML = "今日打卡紀錄：<br>" + data.map(r => {
+            const time = fixTimeFormat(r.time);
+            const makeup = r.isMakeup ? "(補打卡-待審核)" : "";
+            return `${r.status} ${time} (成功) ${makeup}`;
+        }).join("<br>");
+
+    } catch(err) {
+        console.error(err);
+        document.getElementById("todayRecords").innerHTML = "今日打卡紀錄：讀取失敗";
     }
-
-    let htmlContent = "今日打卡紀錄：<br>";
-    const recordsHTML = data.map(r => {
-      let color = "#3498db";
-      if(r.status === "下班") color = "#2ecc71";
-      if(r.company.includes("錯誤")) color = "#e67e22";
-      return `<span style="border-left-color:${color}">${r.status}：${r.time}（${r.company}）</span>`;
-    }).join("");
-
-    todayRecords.innerHTML = htmlContent + recordsHTML;
-  }catch{
-    todayRecords.innerHTML="今日打卡紀錄：讀取失敗";
-  }
 }
 
 document.getElementById("btnStart").onclick = () => performClockIn("上班");
@@ -379,22 +365,118 @@ document.getElementById("btnApprove").onclick = () => {
     window.location.href = "https://script.google.com/macros/s/AKfycbyxXrvVxfgwrI-SdXM03QEYxEpG-xqyjVQcxdNz1IBK3DtFC-kUFjHhRaNtgXNU-Mdu/exec";
 };
 
-// ===== 初始化載入 =====
 window.onload = async () => {
-    try {
-        await updateUserInfo();
-        await updateTodayRecords();
-    } catch (error) {
-        console.error("初始化失敗", error);
-        document.getElementById("userInfo").textContent = "初始化失敗";
-        statusInfo.textContent = "請重新整理網頁";
-        statusInfo.style.background = "#e74c3c";
-    }
+    await updateUserInfo();
+    await updateTodayRecords();
 };
 </script>
 
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
