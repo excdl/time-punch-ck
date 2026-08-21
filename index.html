@@ -330,29 +330,41 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
     updateTodayRecords();
 }
 
+// ====== 取得今日日期字串 (YYYY/MM/DD) ======
+function getTodayString() {
+    const now = new Date();
+    return now.toLocaleDateString("zh-TW", { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, "/");
+}
+
 /* ===== 今日紀錄 ===== */
 async function updateTodayRecords(){
-  todayRecords.innerHTML="載入中...";
-  try{
-    const res = await fetch(`${API_ENDPOINT}?action=getToday&userId=${userId}&date=${getTodayString()}`);
+  const todayRecords = document.getElementById("todayRecords");
+  if (!window.userId) return;
+  
+  todayRecords.innerHTML = "載入中...";
+  try {
+    const res = await fetch(`${API_ENDPOINT}?action=getToday&userId=${window.userId}&date=${getTodayString()}`);
     const data = await res.json();
 
-    if(!data.length){
-      todayRecords.innerHTML="今日打卡紀錄：無";
+    if (!data || !data.length) {
+      todayRecords.innerHTML = "今日打卡紀錄：無";
       return;
     }
 
     let htmlContent = "今日打卡紀錄：<br>";
     const recordsHTML = data.map(r => {
       let color = "#3498db";
-      if(r.status === "下班") color = "#2ecc71";
-      if(r.company.includes("錯誤")) color = "#e67e22";
-      return `<span style="border-left-color:${color}">${r.status}：${r.time}（${r.company}）</span>`;
+      if (r.status === "下班") color = "#2ecc71";
+      const time = fixTimeFormat(r.time);
+      const companyText = r.company ? `（${r.company}）` : "";
+      const makeupText = r.isMakeup ? "(補打卡-待審核)" : "";
+      return `<span style="border-left-color:${color}; display:block; margin-bottom:5px; padding-left:5px; border-left:3px solid ${color}">${r.status}：${time} ${companyText} ${makeupText}</span>`;
     }).join("");
 
     todayRecords.innerHTML = htmlContent + recordsHTML;
-  }catch{
-    todayRecords.innerHTML="今日打卡紀錄：讀取失敗";
+  } catch (err) {
+    console.error(err);
+    todayRecords.innerHTML = "今日打卡紀錄：讀取失敗";
   }
 }
 
