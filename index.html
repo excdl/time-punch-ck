@@ -15,7 +15,7 @@ body {font-family:"Arial","Noto Sans TC",sans-serif;background:#f0f4f8;display:f
 .buttons-container {display:flex;gap:15px;width:100%;}
 .buttons-container button {flex:1;padding:15px 0;font-size:22px;font-weight:bold;border-radius:12px;border:none;cursor:pointer;color:white;transition:all 0.2s;}
 
-/* 按鈕顏色：上班（橘色） / 下班（藍色） */
+/* 🚀 優化點：更改按鈕顏色（上班：橘色 / 下班：藍色） */
 #btnStart {background: linear-gradient(135deg, #ff9f43, #ee5253);}
 #btnEnd {background: linear-gradient(135deg, #3498db, #2980b9);}
 
@@ -49,12 +49,13 @@ button:disabled {opacity:0.5;cursor:not-allowed;}
   <div id="statusInfo">定位確認中…</div>
   <div id="dateTime">載入中…</div>
   <div class="buttons-container">
-    <button id="btnStart" disabled>上班</button>
-    <button id="btnEnd" disabled>下班</button>
+    <button id="btnStart" disabled>定位中…</button>
+    <button id="btnEnd" disabled>定位中…</button>
   </div>
   <div id="todayRecords">今日打卡紀錄（點擊更新）</div>
   <button id="btnApprove">查看 | 簽核</button>
 </div>
+ 
 
 <script>
 // ===== 設定 =====
