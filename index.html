@@ -47,8 +47,8 @@ button:disabled {opacity:0.5;cursor:not-allowed;}
   <div id="statusInfo">網路與定位初始化中…</div>
   <div id="dateTime">載入中…</div>
   <div class="buttons-container">
-    <button id="btnStart" disabled>載入中…</button>
-    <button id="btnEnd" disabled>載入中…</button>
+    <button id="btnStart" disabled>同步中…</button>
+    <button id="btnEnd" disabled>同步中…</button>
   </div>
   <div id="todayRecords">今日打卡紀錄（點擊更新）</div>
   <button id="btnApprove">查看 | 簽核</button>
@@ -61,6 +61,16 @@ const MANAGERS = [
     "U76174e2a9654ab2c7b1f037b28cb6c86", "U7fdf4fbd467b9a93a23fac01ed03351b"
 ];
 
+const userInfo = document.getElementById("userInfo");
+const statusInfo = document.getElementById("statusInfo");
+const btnStart = document.getElementById("btnStart");
+const btnEnd = document.getElementById("btnEnd");
+const todayRecords = document.getElementById("todayRecords");
+
+window.userReady = false;
+window.allowRemote = false;
+
+// ====== 更新日期時間 ======
 function updateDateTime() {
     const now = new Date();
     document.getElementById("dateTime").textContent = now.toLocaleString("zh-TW", { hour12: false });
@@ -68,14 +78,23 @@ function updateDateTime() {
 setInterval(updateDateTime, 1000);
 updateDateTime();
 
-// 快速取得 IP (優先讀取快取，避免每次都向外部 API 發請求造成延遲)
-async function getIP() {
+// ====== 按鈕鎖定控制 ======
+function setButtonsLock(locked, startText = "上班", endText = "下班") {
+    btnStart.disabled = locked;
+    btnEnd.disabled = locked;
+    btnStart.textContent = startText;
+    btnEnd.textContent = endText;
+    window.userReady = !locked;
+}
+
+// ====== 預載入與取得 IP (含 2.5 秒超時防呆) ======
+async function preloadIP() {
     const cache = sessionStorage.getItem("myIP");
     if (cache) return cache;
 
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2500); // 縮短至 2.5 秒逾時
+        const timeoutId = setTimeout(() => controller.abort(), 2500);
         const res = await fetch("https://api.ipify.org?format=json", { signal: controller.signal });
         clearTimeout(timeoutId);
         const data = await res.json();
@@ -86,6 +105,59 @@ async function getIP() {
     }
 }
 
+// ====== 初始化 LIFF 使用者 ======
+async function initUser() {
+    await liff.init({ liffId: "2008520938-4018BD8v" });
+    if (!liff.isLoggedIn()) {
+        await liff.login();
+        return;
+    }
+    const profile = await liff.getProfile();
+    window.userId = profile.userId;
+    window.userName = profile.displayName;
+
+    userInfo.textContent = `${window.userName} 您好`;
+    document.getElementById("btnApprove").style.display = MANAGERS.includes(window.userId) ? "block" : "none";
+}
+
+// ====== 狀態與打卡權限判定 ======
+async function updateStatus(forceRefresh = false) {
+    const cachedIP = await preloadIP();
+    const isCompany = COMPANY_IPS.includes(cachedIP);
+
+    if (isCompany) {
+        statusInfo.textContent = "有效打卡區";
+        statusInfo.style.background = "#2ecc71";
+        setButtonsLock(false, "上班", "下班");
+        window.allowRemote = false;
+        return;
+    }
+
+    // 非公司 IP 時，向後端查詢異地特許權限
+    let remoteAllowed = false;
+    if (window.userId) {
+        try {
+            const remoteRes = await fetch(`${API_ENDPOINT}?action=checkRemote&userId=${window.userId}`);
+            const remoteData = await remoteRes.json();
+            remoteAllowed = remoteData.allowed || false;
+        } catch(err) {
+            console.error("查詢允許異地失敗", err);
+        }
+    }
+    window.allowRemote = remoteAllowed;
+
+    if (remoteAllowed) {
+        statusInfo.textContent = "有效打卡區 (異地特許)";
+        statusInfo.style.background = "#2ecc71";
+        setButtonsLock(false, "上班", "下班");
+    } else {
+        statusInfo.textContent = "無效打卡區";
+        statusInfo.style.background = "#e74c3c";
+        setButtonsLock(true, "上班", "下班");
+    }
+}
+
+// ====== 取得手機 GPS 經緯度 ======
 function getGeoLocation() {
     return new Promise((resolve) => {
         if (!navigator.geolocation) {
@@ -102,6 +174,7 @@ function getGeoLocation() {
     });
 }
 
+// ====== 時間格式處理 ======
 function fixTimeFormat(t) {
     if (typeof t === "string" && t.includes(":") && !t.includes("T")) return t;
     if (typeof t === "string" && t.includes("T")) return new Date(t).toLocaleTimeString("zh-TW", { hour12: false });
@@ -112,105 +185,37 @@ function fixTimeFormat(t) {
     return t;
 }
 
-const btnStart = document.getElementById("btnStart");
-const btnEnd   = document.getElementById("btnEnd");
+// ====== 初始化載入 (極速秒開版) ======
+window.onload = async () => {
+  statusInfo.textContent = "正在檢查網路狀態...";
+  statusInfo.style.background = "#95a5a6";
+  setButtonsLock(true, "同步中...", "同步中...");
 
-btnStart.disabled = true;
-btnEnd.disabled = true;
-window.userReady = false;
-window.allowRemote = false;
+  try {
+    // 1. 同時取得 LIFF 姓名與外網 IP
+    await Promise.all([
+      initUser(),
+      preloadIP()
+    ]);
+    
+    // 2. 立即進行第一次狀態判斷（此時若快取 IP 符合會秒開打卡區）
+    await updateStatus(true);
 
-// ====== 極速優化初始化流程 ======
-async function updateUserInfo() {
-    const s = document.getElementById("statusInfo");
-    s.textContent = "網路與定位初始化中…";
-    s.style.color = "#ffffff";
-    s.style.backgroundColor = "#95a5a6";
+    // 3. 同時在背景載入今日打卡紀錄
+    await updateTodayRecords();
+    
+    // 4. 確保身分與權限全面同步後再刷新一次狀態
+    await updateStatus(true);
 
-    try {
-        // 1. 同步執行 LIFF 初始化與快取 IP 讀取（雙管齊下）
-        const [_, cachedIP] = await Promise.all([
-            liff.init({ liffId: "2008520938-4018BD8v" }),
-            Promise.resolve(sessionStorage.getItem("myIP") || "")
-        ]);
+  } catch (error) {
+    console.error("初始化失敗", error);
+    userInfo.textContent = "初始化失敗";
+    statusInfo.textContent = "請重新整理網頁";
+    statusInfo.style.background = "#e74c3c";
+  }
+};
 
-        if (!liff.isLoggedIn()) {
-            await liff.login();
-            return;
-        }
-
-        // 2. 取得 Profile
-        const profile = await liff.getProfile();
-        window.userId = profile.userId;
-        window.userName = profile.displayName;
-
-        document.getElementById("userInfo").textContent = `${window.userName} 您好`;
-        document.getElementById("btnApprove").style.display = MANAGERS.includes(window.userId) ? "block" : "none";
-
-        // 3. 速度關鍵：如果快取 IP 剛好是公司 IP，直接瞬開按鈕！不用等待外部 API 或後端查詢
-        if (cachedIP && COMPANY_IPS.includes(cachedIP)) {
-            s.textContent = "有效打卡區";
-            s.style.color = "#ffffff";
-            s.style.backgroundColor = "#2ecc71";
-            btnStart.disabled = false;
-            btnEnd.disabled = false;
-            btnStart.textContent = "上班";
-            btnEnd.textContent = "下班";
-            window.userReady = true;
-            window.allowRemote = false;
-            
-            // 背景非同步更新今日紀錄與背景校對 IP
-            updateTodayRecords();
-            getIP(); // 背景默默確認最新的 IP
-            return;
-        }
-
-        // 4. 若沒有快取或不是公司 IP，才進行完整抓取與後端異地特許查詢
-        const finalIP = await getIP();
-        const isCompany = COMPANY_IPS.includes(finalIP);
-
-        let remoteAllowed = false;
-        if (!isCompany) {
-            try {
-                const remoteRes = await fetch(`${API_ENDPOINT}?action=checkRemote&userId=${window.userId}`);
-                const remoteData = await remoteRes.json();
-                remoteAllowed = remoteData.allowed || false;
-            } catch(err) {
-                console.error("查詢允許異地失敗", err);
-            }
-        }
-        window.allowRemote = remoteAllowed;
-
-        if (isCompany || window.allowRemote) {
-            s.textContent = "有效打卡區";
-            s.style.color = "#ffffff";
-            s.style.backgroundColor = "#2ecc71";
-            btnStart.disabled = false;
-            btnEnd.disabled = false;
-            btnStart.textContent = "上班";
-            btnEnd.textContent = "下班";
-            window.userReady = true;
-        } else {
-            s.textContent = "無效打卡區";
-            s.style.color = "#ffffff";
-            s.style.backgroundColor = "#e74c3c";
-            btnStart.disabled = true;
-            btnEnd.disabled = true;
-            btnStart.textContent = "上班";
-            btnEnd.textContent = "下班";
-            window.userReady = false;
-        }
-
-    } catch (err) {
-        console.error("初始化失敗:", err);
-        s.textContent = "初始化異常，請重新整理";
-        s.style.color = "#ffffff";
-        s.style.backgroundColor = "#e74c3c";
-    }
-
-    updateTodayRecords();
-}
-
+/* ===== 打卡後發送 Flex Message ===== */
 async function sendSelfMessage(record) {
     if (!liff.isInClient()) return;
     let headerColor = record.status === "下班" ? "#2ecc71" : "#3498db"; 
@@ -241,13 +246,14 @@ async function sendSelfMessage(record) {
     }
 }
 
+// ===== 打卡函式 =====
 async function performClockIn(status, customDate = "", customTime = "", isMakeup = false) {
     if (!window.userReady && !isMakeup) {
         Swal.fire({ icon:"warning", title:"提示", html:"目前為無效打卡區，無法打卡！", timer:1500, showConfirmButton:false });
         return;
     }
 
-    const ip = await getIP();
+    const ip = await preloadIP();
 
     if (!isMakeup && !COMPANY_IPS.includes(ip) && !window.allowRemote) {
         Swal.fire({
@@ -322,8 +328,8 @@ function getTodayString() {
     return now.toLocaleDateString("zh-TW", { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, "/");
 }
 
+/* ===== 今日紀錄 ===== */
 async function updateTodayRecords(){
-  const todayRecords = document.getElementById("todayRecords");
   if (!window.userId) return;
   
   try {
@@ -356,10 +362,6 @@ document.getElementById("btnEnd").onclick = () => performClockIn("下班");
 
 document.getElementById("btnApprove").onclick = () => {
     window.location.href = "https://script.google.com/macros/s/AKfycbyxXrvVxfgwrI-SdXM03QEYxEpG-xqyjVQcxdNz1IBK3DtFC-kUFjHhRaNtgXNU-Mdu/exec";
-};
-
-window.onload = async () => {
-    await updateUserInfo();
 };
 </script>
 
