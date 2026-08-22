@@ -47,26 +47,46 @@ body {
     box-sizing: border-box;
 }
 
-/* 使用者歡迎區塊 */
+/* 使用者歡迎與頭像區塊 */
 .user-greeting {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    gap: 10px;
     width: 100%;
 }
 
+.avatar-container {
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: #E2E8F0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border: 3px solid white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.avatar-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
 #userInfo {
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 700;
     color: var(--text-main);
     text-align: center;
 }
 
 #dateTime {
-    font-size: 15px;
+    font-size: 14px;
     color: var(--text-sub);
     font-weight: 500;
+    margin-top: -4px;
 }
 
 /* 狀態徽章 */
@@ -197,6 +217,9 @@ button:disabled {
 
 <div class="card">
   <div class="user-greeting">
+    <div class="avatar-container">
+      <img id="userAvatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2394A3B8'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z'/%3E%3C/svg%3E" alt="使用者頭像">
+    </div>
     <div id="userInfo">載入中…</div>
     <div id="dateTime">載入時間中…</div>
   </div>
@@ -224,6 +247,7 @@ const MANAGERS = [
 ];
 
 const userInfo = document.getElementById("userInfo");
+const userAvatar = document.getElementById("userAvatar");
 const statusInfo = document.getElementById("statusInfo");
 const btnStart = document.getElementById("btnStart");
 const btnEnd = document.getElementById("btnEnd");
@@ -269,7 +293,7 @@ async function preloadIP() {
     }
 }
 
-// ====== 初始化 LIFF 使用者 ======
+// ====== 初始化 LIFF 使用者 (直接抓取 LINE 頭像) ======
 async function initUser() {
     await liff.init({ liffId: "2008520938-4018BD8v" });
     if (!liff.isLoggedIn()) {
@@ -279,8 +303,13 @@ async function initUser() {
     const profile = await liff.getProfile();
     window.userId = profile.userId;
     window.userName = profile.displayName;
-
+    
+    // 設定使用者名稱與 LINE 大頭貼
     userInfo.textContent = `${window.userName} 您好`;
+    if (profile.pictureUrl) {
+        userAvatar.src = profile.pictureUrl;
+    }
+
     document.getElementById("btnApprove").style.display = MANAGERS.includes(window.userId) ? "block" : "none";
 }
 
