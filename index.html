@@ -107,7 +107,7 @@ body {
     box-shadow: 0 15px 30px rgba(0,0,0,0.15);
 }
 
-/* ===== 美化後的數位時鐘樣式 ===== */
+/* 數位時鐘樣式 */
 .clock-container {
     display: flex;
     align-items: center;
@@ -132,7 +132,7 @@ body {
     font-size: 38px;       
     font-weight: normal;   
     color: var(--text-main);
-    font-family: "Courier New", Courier, monospace; /* 等寬字型讓數字對齊穩定 */
+    font-family: "Courier New", Courier, monospace;
     letter-spacing: 1px;
 }
 
@@ -148,7 +148,6 @@ body {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
 }
-/* ================================ */
 
 /* 大打卡按鈕群組 */
 .buttons-container {
@@ -314,7 +313,6 @@ button:not(:disabled):active {
 
   <!-- 打卡儀表板主卡片 -->
   <div class="dashboard-card">
-    <!-- 美化後的數位時鐘介面 -->
     <div class="clock-container">
       <div class="time-box"><span id="timeHour">00</span></div>
       <span class="time-separator">:</span>
@@ -361,12 +359,10 @@ window.allowRemote = false;
 function updateDateTime() {
     const now = new Date();
     
-    // 更新時分秒獨立數字
     document.getElementById("timeHour").textContent = String(now.getHours()).padStart(2, '0');
     document.getElementById("timeMin").textContent = String(now.getMinutes()).padStart(2, '0');
     document.getElementById("timeSec").textContent = String(now.getSeconds()).padStart(2, '0');
     
-    // 取得日期與星期
     const dateStr = now.toLocaleDateString("zh-TW", { year: 'numeric', month: '2-digit', day: '2-digit' });
     const weekdayStr = now.toLocaleDateString("zh-TW", { weekday: 'long' });
     headerDate.textContent = `${dateStr} (${weekdayStr})`;
@@ -449,8 +445,8 @@ async function updateStatus(forceRefresh = false) {
     window.allowRemote = remoteAllowed;
 
     if (remoteAllowed) {
-        statusInfo.textContent = "有效打卡區";
-        statusInfo.style.background = "#2ecc71";
+        statusInfo.textContent = "有效打卡區(異地)"; // 異地授權時顯示此文字
+        statusInfo.style.background = "#2ecc71"; // 維持翠綠色
         setButtonsLock(false, "上班", "下班");
     } else {
         statusInfo.textContent = "無效打卡區";
