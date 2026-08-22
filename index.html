@@ -72,6 +72,7 @@ body {
 .user-profile {
     display: flex;
     flex-direction: column;
+    gap: 2px;
 }
 #userInfo {
     font-size: 20px;
@@ -79,14 +80,15 @@ body {
     color: var(--text-main);
 }
 .app-subtitle {
-    font-size: 13px;
+    font-size: 14px;        /* 稍微放大日期字體 */
+    font-weight: bold;      /* 讓日期與星期更清晰 */
     color: var(--text-sub);
 }
 #statusInfo {
-    font-size: 16px; /* 放大狀態文字 */
+    font-size: 16px; 
     font-weight: bold;
     color: white;
-    padding: 8px 18px; /* 稍微加大範圍 */
+    padding: 8px 18px; 
     border-radius: 25px;
     background: #95a5a6;
     text-align: center;
@@ -112,7 +114,7 @@ body {
     letter-spacing: 1px;
 }
 .clock-subtext {
-    display: none;         /* 原本的日期小字隱藏，改放至上方標題 */
+    display: none;         
 }
 
 /* 大打卡按鈕群組 */
@@ -318,11 +320,15 @@ const todayRecords = document.getElementById("todayRecords");
 window.userReady = false;
 window.allowRemote = false;
 
-// ====== 更新日期時間 ======
+// ====== 更新日期時間與星期 ======
 function updateDateTime() {
     const now = new Date();
     document.getElementById("dateTime").textContent = now.toLocaleTimeString("zh-TW", { hour12: false });
-    headerDate.textContent = now.toLocaleDateString("zh-TW", { year: 'numeric', month: '2-digit', day: '2-digit' });
+    
+    // 取得日期與星期
+    const dateStr = now.toLocaleDateString("zh-TW", { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const weekdayStr = now.toLocaleDateString("zh-TW", { weekday: 'long' });
+    headerDate.textContent = `${dateStr} (${weekdayStr})`;
 }
 setInterval(updateDateTime, 1000);
 updateDateTime();
@@ -402,7 +408,7 @@ async function updateStatus(forceRefresh = false) {
     window.allowRemote = remoteAllowed;
 
     if (remoteAllowed) {
-        statusInfo.textContent = "有效打卡區"; // 無論異地或公司，皆統一顯示「有效打卡區」文字
+        statusInfo.textContent = "有效打卡區";
         statusInfo.style.background = "#2ecc71";
         setButtonsLock(false, "上班", "下班");
     } else {
