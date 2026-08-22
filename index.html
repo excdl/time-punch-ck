@@ -7,169 +7,51 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-:root {
-    --primary-gradient: linear-gradient(135deg, #4f46e5, #3b82f6);
-    --start-gradient: linear-gradient(135deg, #f59e0b, #ea580c);
-    --end-gradient: linear-gradient(135deg, #0ea5e9, #0284c7);
-    --approve-gradient: linear-gradient(135deg, #8b5cf6, #6d28d9);
-    --bg-color: #f8fafc;
-    --card-bg: #ffffff;
-    --text-main: #1e293b;
-    --text-sub: #64748b;
-    --border-color: #e2e8f0;
-}
+body {font-family:"Arial","Noto Sans TC",sans-serif;background:#f0f4f8;display:flex;justify-content:center;padding:20px;margin:0;}
+.card {background:#fff;width:95%;max-width:480px;border-radius:20px;padding:25px 20px;display:flex;flex-direction:column;align-items:center;gap:20px;box-shadow:0 15px 30px rgba(0,0,0,0.15);}
+#userInfo {font-size:28px;font-weight:bold;text-align:center;color:#2c3e50;}
+#dateTime {font-size:22px;color:#7f8c8d;text-align:center;}
+#statusInfo {font-size:20px;color:white;padding:8px 25px;border-radius:25px;text-align:center;min-width:180px;}
+.buttons-container {display:flex;gap:15px;width:100%;}
+.buttons-container button {flex:1;padding:15px 0;font-size:22px;font-weight:bold;border-radius:12px;border:none;cursor:pointer;color:white;transition:all 0.2s;}
 
-body {
-    font-family: "Inter", "Noto Sans TC", sans-serif;
-    background: var(--bg-color);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    margin: 0;
-    color: var(--text-main);
-}
+#btnStart {background: linear-gradient(135deg, #ff9f43, #ee5253);}
+#btnEnd {background: linear-gradient(135deg, #3498db, #2980b9);}
 
-.card {
-    background: var(--card-bg);
-    width: 90%;
-    max-width: 440px;
-    border-radius: 24px;
-    padding: 30px 24px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
-    border: 1px solid rgba(226, 232, 240, 0.8);
-}
-
-#userInfo {
-    font-size: 24px;
-    font-weight: 700;
-    text-align: center;
-    color: var(--text-main);
-    letter-spacing: -0.5px;
-}
-
-#dateTime {
-    font-size: 18px;
-    font-weight: 500;
-    color: var(--text-sub);
-    text-align: center;
-    background: #f1f5f9;
-    padding: 6px 16px;
-    border-radius: 20px;
-}
-
-#statusInfo {
-    font-size: 15px;
-    font-weight: 600;
-    color: white;
-    padding: 6px 18px;
-    border-radius: 20px;
-    text-align: center;
-    min-width: 140px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease;
-}
-
-.buttons-container {
-    display: flex;
-    gap: 12px;
-    width: 100%;
-}
-
-.buttons-container button {
-    flex: 1;
-    padding: 14px 0;
-    font-size: 18px;
-    font-weight: 600;
-    border-radius: 14px;
-    border: none;
-    cursor: pointer;
-    color: white;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
-}
-
-.buttons-container button:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.15);
-}
-
-.buttons-container button:active:not(:disabled) {
-    transform: translateY(0);
-}
-
-#btnStart { background: var(--start-gradient); }
-#btnEnd { background: var(--end-gradient); }
-
-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    box-shadow: none !important;
-    transform: none !important;
-}
-
-#todayRecords {
-    width: 100%;
-    background: #f8fafc;
-    border-radius: 14px;
-    padding: 16px;
-    border: 1px solid var(--border-color);
-    font-size: 15px;
-    text-align: left;
-    box-sizing: border-box;
-    color: var(--text-sub);
-}
-
-#todayRecords span {
-    display: block;
-    margin-top: 8px;
-    padding: 8px 12px;
-    background: #ffffff;
-    border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-    font-weight: 500;
-    color: var(--text-main);
-}
+button:disabled {opacity:0.5;cursor:not-allowed;}
+#todayRecords {width:100%;background:#fafafa;border-radius:14px;padding:15px;border:1px solid #ddd;font-size:18px;text-align:left;}
+#todayRecords span {display:block;margin-bottom:5px;padding-left:5px;border-left:3px solid #3498db;}
 
 #btnApprove {
-    margin-top: 4px;
-    padding: 12px 20px;
-    font-size: 16px;
-    font-weight: 600;
-    border-radius: 12px;
-    background: var(--approve-gradient);
-    color: white;
-    display: none;
-    width: 100%;
-    cursor: pointer;
-    border: none;
-    box-shadow: 0 4px 6px -1px rgba(139, 92, 246, 0.3);
-    transition: transform 0.2s, box-shadow 0.2s;
+    margin-top:10px;
+    padding:12px 20px;
+    font-size:18px;
+    font-weight:bold;
+    border-radius:10px;
+    background:linear-gradient(145deg,#8e44ad,#663399);
+    color:white;
+    display:none;
+    width:100%;
+    cursor:pointer;
+    border:none;
 }
-
 #btnApprove:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 12px -2px rgba(139, 92, 246, 0.4);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
 }
 </style>
 </head>
 <body>
 <div class="card">
   <div id="userInfo">載入使用者資訊中...</div>
-  <div id="dateTime">載入中…</div>
   <div id="statusInfo">網路與定位初始化中…</div>
-  
+  <div id="dateTime">載入中…</div>
   <div class="buttons-container">
     <button id="btnStart" disabled>同步中…</button>
     <button id="btnEnd" disabled>同步中…</button>
   </div>
-  
-  <div id="todayRecords">今日打卡紀錄（載入中…）</div>
-  <button id="btnApprove">📋 查看與簽核管理</button>
+  <div id="todayRecords">今日打卡紀錄（點擊更新）</div>
+  <button id="btnApprove">查看 | 簽核</button>
 </div>
  
 <script>
@@ -197,7 +79,7 @@ setInterval(updateDateTime, 1000);
 updateDateTime();
 
 // ====== 按鈕鎖定控制 ======
-function setButtonsLock(locked, startText = "上班打卡", endText = "下班打卡") {
+function setButtonsLock(locked, startText = "上班", endText = "下班") {
     btnStart.disabled = locked;
     btnEnd.disabled = locked;
     btnStart.textContent = startText;
@@ -244,9 +126,9 @@ async function updateStatus(forceRefresh = false) {
     const isCompany = COMPANY_IPS.includes(cachedIP);
 
     if (isCompany) {
-        statusInfo.textContent = "📍 有效打卡區 (公司網路)";
-        statusInfo.style.background = "#10b981";
-        setButtonsLock(false, "上班打卡", "下班打卡");
+        statusInfo.textContent = "有效打卡區";
+        statusInfo.style.background = "#2ecc71";
+        setButtonsLock(false, "上班", "下班");
         window.allowRemote = false;
         return;
     }
@@ -265,13 +147,13 @@ async function updateStatus(forceRefresh = false) {
     window.allowRemote = remoteAllowed;
 
     if (remoteAllowed) {
-        statusInfo.textContent = "🌐 有效打卡區 (異地授權)";
-        statusInfo.style.background = "#10b981";
-        setButtonsLock(false, "上班打卡", "下班打卡");
+        statusInfo.textContent = "有效打卡區 (異地)";
+        statusInfo.style.background = "#2ecc71";
+        setButtonsLock(false, "上班", "下班");
     } else {
-        statusInfo.textContent = "🔒 無效打卡區 (不在範圍內)";
-        statusInfo.style.background = "#ef4444";
-        setButtonsLock(true, "上班打卡", "下班打卡");
+        statusInfo.textContent = "無效打卡區";
+        statusInfo.style.background = "#e74c3c";
+        setButtonsLock(true, "上班", "下班");
     }
 }
 
@@ -303,34 +185,40 @@ function fixTimeFormat(t) {
     return t;
 }
 
-// ====== 初始化載入 ======
+// ====== 初始化載入 (極速秒開版) ======
 window.onload = async () => {
   statusInfo.textContent = "正在檢查網路狀態...";
-  statusInfo.style.background = "#94a3b8";
+  statusInfo.style.background = "#95a5a6";
   setButtonsLock(true, "同步中...", "同步中...");
 
   try {
+    // 1. 同時取得 LIFF 姓名與外網 IP
     await Promise.all([
       initUser(),
       preloadIP()
     ]);
     
+    // 2. 立即進行第一次狀態判斷（此時若快取 IP 符合會秒開打卡區）
     await updateStatus(true);
+
+    // 3. 同時在背景載入今日打卡紀錄
     await updateTodayRecords();
+    
+    // 4. 確保身分與權限全面同步後再刷新一次狀態
     await updateStatus(true);
 
   } catch (error) {
     console.error("初始化失敗", error);
     userInfo.textContent = "初始化失敗";
     statusInfo.textContent = "請重新整理網頁";
-    statusInfo.style.background = "#ef4444";
+    statusInfo.style.background = "#e74c3c";
   }
 };
 
 /* ===== 打卡後發送 Flex Message ===== */
 async function sendSelfMessage(record) {
     if (!liff.isInClient()) return;
-    let headerColor = record.status === "下班" ? "#10b981" : "#3b82f6"; 
+    let headerColor = record.status === "下班" ? "#2ecc71" : "#3498db"; 
     try {
         await liff.sendMessages([{
             type: 'flex',
@@ -339,15 +227,15 @@ async function sendSelfMessage(record) {
                 type: "bubble",
                 header: {
                     type: "box", layout: "vertical",
-                    contents: [{ type: "text", text: `${record.userName} 已完成打卡`, weight: "bold", size: "lg", color: "#ffffff" }],
-                    backgroundColor: headerColor, paddingAll: "14px"
+                    contents: [{ type: "text", text: `${record.userName} 已打卡`, weight: "bold", size: "lg", color: "#ffffff" }],
+                    backgroundColor: headerColor, paddingAll: "12px"
                 },
                 body: {
                     type: "box", layout: "vertical", spacing: "md",
                     contents: [
-                        { type: "text", text: `狀態：${record.status}`, size: "md", color: "#334155" },
-                        { type: "text", text: `時間：${record.date} ${record.time}`, size: "md", color: "#334155" },
-                        { type: "text", text: `網路：${record.netType}`, size: "md", color: "#64748b" }
+                        { type: "text", text: `狀態：${record.status}`, size: "md" },
+                        { type: "text", text: `時間：${record.date} ${record.time}`, size: "md" },
+                        { type: "text", text: `網路：${record.netType}`, size: "md" }
                     ]
                 }
             }
@@ -361,12 +249,7 @@ async function sendSelfMessage(record) {
 // ===== 打卡函式 =====
 async function performClockIn(status, customDate = "", customTime = "", isMakeup = false) {
     if (!window.userReady && !isMakeup) {
-        Swal.fire({ 
-            icon: "warning", 
-            title: "無法打卡", 
-            text: "目前為無效打卡區，請移動至公司範圍或確認異地權限！", 
-            confirmButtonColor: "#4f46e5"
-        });
+        Swal.fire({ icon:"warning", title:"提示", html:"目前為無效打卡區，無法打卡！", timer:1500, showConfirmButton:false });
         return;
     }
 
@@ -376,8 +259,8 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         Swal.fire({
             icon: "error",
             title: "打卡失敗",
-            html: `<span style="color:#ef4444; font-weight:bold;">非公司網路且未授權異地打卡！</span>`,
-            confirmButtonColor: "#4f46e5"
+            html: `<span style="color:#e74c3c; font-weight:bold;">非公司網路且未授權異地打卡！</span>`,
+            confirmButtonText: "確定"
         });
         return;
     }
@@ -389,19 +272,17 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         lng = geo.lng;
     }
 
-    // 高質感 Loading 彈跳視窗
+    // 顯示 Loading
     Swal.fire({
         html: `
             <div style="padding: 10px 0;">
-                <div style="width: 48px; height: 48px; margin: 0 auto 16px auto; border: 4px solid #e2e8f0; border-top: 4px solid #4f46e5; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
-                <h3 style="margin: 0 0 6px 0; color: #1e293b; font-size: 18px;">正在處理打卡</h3>
-                <p style="margin: 0; color: #64748b; font-size: 14px;">與雲端伺服器安全同步中，請稍候...</p>
+                <div style="width: 50px; height: 50px; margin: 0 auto 18px auto; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                <h3 style="margin: 0 0 8px 0; color: #2c3e50; font-size: 20px;">系統打卡處理中</h3>
+                <p style="margin: 0; color: #7f8c8d; font-size: 14px;">正在與雲端伺服器安全同步，請稍候...</p>
                 <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
             </div>
         `,
-        showConfirmButton: false, 
-        allowOutsideClick: false, 
-        backdrop: "rgba(15, 23, 42, 0.4)"
+        showConfirmButton: false, allowOutsideClick: false, backdrop: "rgba(0,0,0,0.5)"
     });
 
     let apiData = null;
@@ -416,31 +297,31 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         apiData = { message:"網路連線異常，請至下方「今日打卡紀錄」確認是否已打卡成功" };
     }
 
+    // 確保關閉原本的 Loading 畫面
     Swal.close(); 
 
     if (apiData.message && (apiData.message.includes("成功") || apiData.message.includes("更新"))) {
+        // 💡 修改：不要用 await 讓它卡住主畫面，直接在背景發送
         sendSelfMessage({
             userName: window.userName,
             status: status,
             date: apiData.date,
             time: apiData.time,
-            netType: window.allowRemote ? "異地打卡 (GPS)" : "公司網路"
+            netType: window.allowRemote ? "異地打卡(GPS)" : "公司網路"
         }).catch(err => console.error("背景傳送訊息失敗", err));
 
         Swal.fire({
             icon: "success",
             title: isMakeup ? "🎉 補打卡成功！" : "🎉 打卡成功！",
-            html: `<div style="font-size: 15px; color: #475569;">打卡時間：<strong>${apiData.date} ${apiData.time}</strong></div>`,
-            showConfirmButton: false, 
-            timer: 1800, 
-            backdrop: "rgba(15, 23, 42, 0.4)"
+            html: `<strong>打卡時間：</strong> ${apiData.date} ${apiData.time}`,
+            showConfirmButton: false, timer: 1500, backdrop: "rgba(0,0,0,0.5)"
         });
     } else {
         Swal.fire({
             icon: "error",
             title: "打卡提示",
-            text: apiData?.message || "打卡失敗，請檢查網路連線！",
-            confirmButtonColor: "#4f46e5"
+            text: apiData?.message || "打卡失敗，請檢查網路！",
+            confirmButtonText: "確定"
         });
     }
 
@@ -461,17 +342,17 @@ async function updateTodayRecords(){
     const data = await res.json();
 
     if (!data || !data.length) {
-      todayRecords.innerHTML = "今日打卡紀錄：<span style='border-left: 3px solid #cbd5e1; margin-top:8px;'>今日尚無打卡紀錄</span>";
+      todayRecords.innerHTML = "今日打卡紀錄：無";
       return;
     }
 
-    let htmlContent = "今日打卡紀錄：";
+    let htmlContent = "今日打卡紀錄：<br>";
     const recordsHTML = data.map(r => {
-      let color = r.status === "下班" ? "#10b981" : "#3b82f6";
+      let color = r.status === "下班" ? "#2ecc71" : "#3498db";
       const time = fixTimeFormat(r.time);
       const companyText = r.company ? `（${r.company}）` : "";
-      const makeupText = r.isMakeup ? " (補打卡-待審核)" : "";
-      return `<span style="border-left: 3px solid ${color};">${r.status}：${time} ${companyText} <span style="color:#ef4444; font-size:13px;">${makeupText}</span></span>`;
+      const makeupText = r.isMakeup ? "(補打卡-待審核)" : "";
+      return `<span style="border-left-color:${color}; display:block; margin-bottom:5px; padding-left:5px; border-left:3px solid ${color}">${r.status}：${time} ${companyText} ${makeupText}</span>`;
     }).join("");
 
     todayRecords.innerHTML = htmlContent + recordsHTML;
@@ -491,3 +372,91 @@ document.getElementById("btnApprove").onclick = () => {
 
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
