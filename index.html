@@ -84,15 +84,19 @@ body {
     font-weight: bold;
     color: var(--text-sub);
 }
+
+/* 狀態標籤縮小 20% 且強制不換行 */
 #statusInfo {
-    font-size: 16px; 
+    font-size: 14px; 
     font-weight: bold;
     color: white;
-    padding: 8px 18px; 
-    border-radius: 25px;
+    padding: 6px 14px; 
+    border-radius: 20px;
     background: #95a5a6;
     text-align: center;
+    white-space: nowrap;
     box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    flex-shrink: 0;
 }
 
 /* 核心儀表板卡片 */
@@ -445,8 +449,8 @@ async function updateStatus(forceRefresh = false) {
     window.allowRemote = remoteAllowed;
 
     if (remoteAllowed) {
-        statusInfo.textContent = "有效打卡區(異地)"; // 異地授權時顯示此文字
-        statusInfo.style.background = "#2ecc71"; // 維持翠綠色
+        statusInfo.textContent = "有效打卡區(異地)";
+        statusInfo.style.background = "#2ecc71";
         setButtonsLock(false, "上班", "下班");
     } else {
         statusInfo.textContent = "無效打卡區";
@@ -684,7 +688,6 @@ document.getElementById("btnApprove").onclick = () => {
 
 </body>
 </html>
-
 
 
 
