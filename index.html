@@ -641,7 +641,7 @@ function getTodayString() {
     return now.toLocaleDateString("zh-TW", { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, "/");
 }
 
-/* ===== 今日紀錄渲染 ===== */
+/* ===== 優化後的今日紀錄渲染函式 ===== */
 async function updateTodayRecords(){
   if (!window.userId) return;
   
@@ -655,16 +655,23 @@ async function updateTodayRecords(){
     }
 
     const recordsHTML = data.map(r => {
+      // 上班預設藍色 (#3498db)，下班預設綠色 (#2ecc71)
       let color = r.status === "下班" ? "#2ecc71" : "#3498db";
       const time = fixTimeFormat(r.time);
-      const companyText = r.company ? r.company : "一般打卡";
+      
+      // 💡 根據打卡紀錄的 ip 是否在 COMPANY_IPS 內，決定顯示「公司網路」或「異地打卡」
+      const networkLabel = COMPANY_IPS.includes(r.ip) ? "公司網路" : "異地打卡";
+      
+      // 異地打卡顯示橘色提醒，公司網路維持灰色
+      const networkColor = COMPANY_IPS.includes(r.ip) ? "#7f8c8d" : "#e67e22";
+
       const makeupBadge = r.isMakeup ? `<span class="badge-makeup">待審核</span>` : "";
       
       return `
         <div class="record-item" style="border-left-color: ${color};">
           <div class="record-info">
             <div class="record-status">${r.status} ${makeupBadge}</div>
-            <div class="record-details">${companyText}</div>
+            <div class="record-details" style="color: ${networkColor};">${networkLabel}</div>
           </div>
           <div class="record-time" style="color: ${color};">${time}</div>
         </div>
