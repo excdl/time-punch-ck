@@ -298,6 +298,33 @@ button:not(:disabled):active {
     padding: 10px 24px !important;
     box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3) !important;
 }
+/* 倒數動畫（全螢幕置中遮罩） */
+#countdownWrapper {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.85);
+    z-index: 9999;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+#circleProgress { 
+    fill: none; 
+    stroke-width: 12; 
+    stroke-linecap: round; 
+}
+#countdownText { 
+    margin-top: 15px;
+    font-size: 16px;
+    font-weight: bold; 
+    color: #2c3e50;
+    white-space: nowrap; 
+}
+
 </style>
 </head>
 <body>
@@ -330,6 +357,15 @@ button:not(:disabled):active {
       <button id="btnEnd" disabled>下班</button>
     </div>
   </div>
+
+    <!-- 圓形倒數動畫（全螢幕置中遮罩） -->
+<div id="countdownWrapper">
+    <svg width="120" height="120">
+        <circle cx="60" cy="60" r="50" stroke="#eee" stroke-width="12" fill="none"></circle>
+        <circle id="circleProgress" cx="60" cy="60" r="50" stroke="#3498db" stroke-width="12" fill="none" transform="rotate(-90 60 60)"></circle>
+    </svg>
+    <div id="countdownText">打卡中...</div>
+</div>
 
   <!-- 今日紀錄卡片 -->
   <div class="section-container">
@@ -542,7 +578,7 @@ async function sendSelfMessage(record) {
     }
 }
 
-// ===== 打卡函式 =====
+// ===== 改為圓形漸層動畫的打卡函式 =====
 async function performClockIn(status, customDate = "", customTime = "", isMakeup = false) {
     if (!window.userReady && !isMakeup) {
         Swal.fire({ 
@@ -576,21 +612,52 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         lng = geo.lng;
     }
 
-    Swal.fire({
-        html: `
-            <div style="padding: 15px 0; text-align: center;">
-                <div style="width: 50px; height: 50px; margin: 0 auto 18px auto; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
-                <h3 style="margin: 0 0 8px 0; color: #2c3e50; font-size: 20px; font-weight: bold;">系統打卡處理中</h3>
-                <p style="margin: 0; color: #7f8c8d; font-size: 14px;">正在與雲端伺服器安全同步，請稍候...</p>
-                <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
-            </div>
-        `,
-        showConfirmButton: false, 
-        allowOutsideClick: false, 
-        backdrop: "rgba(0,0,0,0.5)",
-        customClass: { popup: 'custom-swal-popup' }
-    });
+    // ===== 啟動圓形漸層倒數動畫 =====
+    const wrapper = document.getElementById("countdownWrapper");
+    const circle = document.getElementById("circleProgress");
+    const text = document.getElementById("countdownText");
 
+    if (wrapper && circle && text) {
+        wrapper.style.display = "flex";
+        text.textContent = isMakeup ? "補打卡中..." : "打卡中...";
+
+        const colors = {
+            上班: { start: { r:52, g:152, b:219 }, end: { r:41, g:128, b:185 } },
+            下班: { start: { r:46, g:204, b:113 }, end: { r:39, g:174, b:96 } },
+            補打卡: { start: { r:243, g:156, b:18 }, end: { r:243, g:156, b:18 } }
+        };
+        const { start: startColor, end: endColor } = isMakeup ? colors.補打卡 : (colors[status] || colors.上班);
+
+        const radius = 50;
+        const circumference = 2 * Math.PI * radius;
+        circle.style.strokeDasharray = circumference;
+        circle.style.strokeDashoffset = circumference;
+
+        let progress = 0;
+        function animate() {
+            progress = Math.min(progress + 0.005, 1);
+            circle.style.strokeDashoffset = circumference * (1 - progress);
+
+            const rC = Math.round(startColor.r*(1-progress) + endColor.r*progress);
+            const gC = Math.round(startColor.g*(1-progress) + endColor.g*progress);
+            const bC = Math.round(startColor.b*(1-progress) + endColor.b*progress);
+            circle.style.stroke = `rgb(${rC},${gC},${bC})`;
+
+            if(progress < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                wrapper.style.transition = "opacity 0.6s";
+                wrapper.style.opacity = 0;
+                setTimeout(() => {
+                    wrapper.style.display = "none";
+                    wrapper.style.opacity = 1;
+                }, 600);
+            }
+        }
+        requestAnimationFrame(animate);
+    }
+
+    // ===== 發送 API =====
     let apiData = null;
     try {
         const res = await fetch(API_ENDPOINT, {
@@ -603,17 +670,22 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         apiData = { message:"網路連線異常，請至下方「今日打卡紀錄」確認是否已打卡成功" };
     }
 
-    Swal.close(); 
-
     if (apiData.message && (apiData.message.includes("成功") || apiData.message.includes("更新"))) {
-        sendSelfMessage({
-            userName: window.userName,
-            status: status,
-            date: apiData.date,
-            time: apiData.time,
-            netType: window.allowRemote ? "異地打卡(GPS)" : "公司網路"
-        }).catch(err => console.error("背景傳送訊息失敗", err));
+        
+        // 背景傳送 LINE 訊息
+        try {
+            sendSelfMessage({
+                userName: window.userName,
+                status: status,
+                date: apiData.date,
+                time: apiData.time,
+                netType: window.allowRemote ? "異地打卡(GPS)" : "公司網路"
+            });
+        } catch (err) {
+            console.error("背景傳送訊息失敗", err);
+        }
 
+        // 顯示成功提示
         Swal.fire({
             icon: "success",
             title: isMakeup ? "🎉 補打卡成功！" : "🎉 打卡成功！",
@@ -633,7 +705,10 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         });
     }
 
-    updateTodayRecords();
+    // 重新整理今日打卡清單
+    setTimeout(() => {
+        updateTodayRecords();
+    }, 400);
 }
 
 function getTodayString() {
