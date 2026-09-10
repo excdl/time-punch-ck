@@ -612,7 +612,7 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         lng = geo.lng;
     }
 
-    // ===== 啟動圓形漸層倒數動畫 =====
+    // ===== 啟動圓形漸層倒數動畫，並透過 Promise 確保動畫完全結束才執行後續 =====
     const wrapper = document.getElementById("countdownWrapper");
     const circle = document.getElementById("circleProgress");
     const text = document.getElementById("countdownText");
@@ -633,31 +633,34 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         circle.style.strokeDasharray = circumference;
         circle.style.strokeDashoffset = circumference;
 
-        let progress = 0;
-        function animate() {
-            progress = Math.min(progress + 0.006, 1);
-            circle.style.strokeDashoffset = circumference * (1 - progress);
+        await new Promise((resolve) => {
+            let progress = 0;
+            function animate() {
+                progress = Math.min(progress + 0.006, 1);
+                circle.style.strokeDashoffset = circumference * (1 - progress);
 
-            const rC = Math.round(startColor.r*(1-progress) + endColor.r*progress);
-            const gC = Math.round(startColor.g*(1-progress) + endColor.g*progress);
-            const bC = Math.round(startColor.b*(1-progress) + endColor.b*progress);
-            circle.style.stroke = `rgb(${rC},${gC},${bC})`;
+                const rC = Math.round(startColor.r*(1-progress) + endColor.r*progress);
+                const gC = Math.round(startColor.g*(1-progress) + endColor.g*progress);
+                const bC = Math.round(startColor.b*(1-progress) + endColor.b*progress);
+                circle.style.stroke = `rgb(${rC},${gC},${bC})`;
 
-            if(progress < 1) {
-                requestAnimationFrame(animate);
-            } else {
-                wrapper.style.transition = "opacity 0.6s";
-                wrapper.style.opacity = 0;
-                setTimeout(() => {
-                    wrapper.style.display = "none";
-                    wrapper.style.opacity = 1;
-                }, 300);
+                if(progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    wrapper.style.transition = "opacity 0.6s";
+                    wrapper.style.opacity = 0;
+                    setTimeout(() => {
+                        wrapper.style.display = "none";
+                        wrapper.style.opacity = 1;
+                        resolve(); // 動畫完全結束後解鎖
+                    }, 300);
+                }
             }
-        }
-        requestAnimationFrame(animate);
+            requestAnimationFrame(animate);
+        });
     }
 
-    // ===== 發送 API =====
+    // ===== 發送 API (動畫結束後才發送，或此時 API 通常也已經返回結果) =====
     let apiData = null;
     try {
         const res = await fetch(API_ENDPOINT, {
