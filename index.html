@@ -378,7 +378,7 @@ button:not(:disabled):active {
 </div>
  
 <script>
-const API_ENDPOINT = "https://script.google.com/macros/s/AKfycbxvDVzF4o8TsM3NZreIZEbQnuHmiCQSrSM0uMrJ5RKk7r_TMr2YPWPVo5fFIbqpNCsiqg/exec";
+const API_ENDPOINT = "https://script.google.com/macros/s/AKfycbwG47N38cIpfYosr0MIv7AR35RG5s_vZGPZ3w8VnVuoN1TqYoACUIfvcCpEXoyqMFyrQA/exec";
 const COMPANY_IPS  = ["220.134.112.245", "114.34.60.48"];
 const MANAGERS = [
     "U76174e2a9654ab2c7b1f037b28cb6c86", "U7fdf4fbd467b9a93a23fac01ed03351b"
@@ -437,7 +437,7 @@ async function preloadIP() {
     }
 }
 
-// ====== 本地快取讀取機制 (加速秒渲染) ======
+// ====== 本地快取讀取機制 (秒開畫面與打卡紀錄) ======
 function loadUserFromCache() {
     const cachedUserId = localStorage.getItem("cached_userId");
     const cachedUserName = localStorage.getItem("cached_userName");
@@ -453,9 +453,16 @@ function loadUserFromCache() {
         } else {
             userAvatar.textContent = window.userName.charAt(0);
         }
-        
-        // 優先帶入快取立即發送請求渲染今日打卡紀錄
-        updateTodayRecords(true); 
+    }
+
+    // 優先讀取 sessionStorage 中的打卡紀錄進行秒渲染
+    const cachedRecords = sessionStorage.getItem("cached_today_records");
+    if (cachedRecords) {
+        try {
+            renderRecords(JSON.parse(cachedRecords));
+        } catch (e) {
+            console.error("解析快取紀錄失敗", e);
+        }
     }
 }
 
@@ -555,7 +562,7 @@ window.onload = async () => {
   statusInfo.style.background = "#95a5a6";
   setButtonsLock(true, "同步中...", "同步中...");
 
-  // 1. 優先從 LocalStorage 載入畫面，達到秒開效果
+  // 1. 優先從 LocalStorage / SessionStorage 載入畫面，達到秒開效果
   loadUserFromCache();
 
   try {
@@ -744,12 +751,39 @@ function getTodayString() {
     return now.toLocaleDateString("zh-TW", { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, "/");
 }
 
-/* ===== 優化後的今日紀錄渲染函式 (支援骨架屏) ===== */
+/* ===== 共用紀錄渲染函式 ===== */
+function renderRecords(data) {
+    if (!data || !data.length) {
+        todayRecords.innerHTML = `<div class="records-empty">今日尚無打卡紀錄</div>`;
+        return;
+    }
+
+    const recordsHTML = data.map(r => {
+        let color = r.status === "下班" ? "#2ecc71" : "#3498db";
+        const time = fixTimeFormat(r.time);
+        const networkLabel = COMPANY_IPS.includes(r.ip) ? "公司網路" : "異地打卡";
+        const networkColor = COMPANY_IPS.includes(r.ip) ? "#7f8c8d" : "#e67e22";
+        const makeupBadge = r.isMakeup ? `<span class="badge-makeup">待審核</span>` : "";
+        
+        return `
+            <div class="record-item" style="border-left-color: ${color};">
+              <div class="record-info">
+                <div class="record-status">${r.status} ${makeupBadge}</div>
+                <div class="record-details" style="color: ${networkColor};">${networkLabel}</div>
+              </div>
+              <div class="record-time" style="color: ${color};">${time}</div>
+            </div>
+        `;
+    }).join("");
+
+    todayRecords.innerHTML = recordsHTML;
+}
+
+/* ===== 優化後的今日紀錄非同步更新函式 (支援快取與骨架屏) ===== */
 async function updateTodayRecords(isFastRender = false){
   if (!window.userId) return;
   
-  // 若非快速渲染快取，顯示骨架屏 (Skeleton Screen) 降低視覺空白感
-  if (!isFastRender) {
+  if (!isFastRender && !sessionStorage.getItem("cached_today_records")) {
       todayRecords.innerHTML = `
         <div class="record-item" style="border-left-color: #bdc3c7; opacity: 0.6;">
           <div class="record-info">
@@ -765,33 +799,13 @@ async function updateTodayRecords(isFastRender = false){
     const res = await fetch(`${API_ENDPOINT}?action=getToday&userId=${window.userId}&date=${getTodayString()}`);
     const data = await res.json();
 
-    if (!data || !data.length) {
-      todayRecords.innerHTML = `<div class="records-empty">今日尚無打卡紀錄</div>`;
-      return;
-    }
+    // 儲存至 sessionStorage 快取
+    sessionStorage.setItem("cached_today_records", JSON.stringify(data));
 
-    const recordsHTML = data.map(r => {
-      let color = r.status === "下班" ? "#2ecc71" : "#3498db";
-      const time = fixTimeFormat(r.time);
-      const networkLabel = COMPANY_IPS.includes(r.ip) ? "公司網路" : "異地打卡";
-      const networkColor = COMPANY_IPS.includes(r.ip) ? "#7f8c8d" : "#e67e22";
-      const makeupBadge = r.isMakeup ? `<span class="badge-makeup">待審核</span>` : "";
-      
-      return `
-        <div class="record-item" style="border-left-color: ${color};">
-          <div class="record-info">
-            <div class="record-status">${r.status} ${makeupBadge}</div>
-            <div class="record-details" style="color: ${networkColor};">${networkLabel}</div>
-          </div>
-          <div class="record-time" style="color: ${color};">${time}</div>
-        </div>
-      `;
-    }).join("");
-
-    todayRecords.innerHTML = recordsHTML;
+    renderRecords(data);
   } catch (err) {
     console.error(err);
-    if (!isFastRender) {
+    if (!sessionStorage.getItem("cached_today_records")) {
         todayRecords.innerHTML = `<div class="records-empty" style="color: #e74c3c;">今日打卡紀錄讀取失敗</div>`;
     }
   }
@@ -804,7 +818,6 @@ document.getElementById("btnApprove").onclick = () => {
     window.location.href = "https://script.google.com/macros/s/AKfycbyxXrvVxfgwrI-SdXM03QEYxEpG-xqyjVQcxdNz1IBK3DtFC-kUFjHhRaNtgXNU-Mdu/exec";
 };
 </script>
-
 </body>
 </html>
 
