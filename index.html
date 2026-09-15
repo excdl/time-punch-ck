@@ -218,11 +218,6 @@ button:not(:disabled):active {
     border-left: 4px solid #3498db;
     box-sizing: border-box;
     font-size: 16px;
-    animation: fadeIn 0.3s ease-in-out;
-}
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(4px); }
-    to { opacity: 1; transform: translateY(0); }
 }
 .record-info {
     display: flex;
@@ -727,18 +722,10 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
             console.error("背景傳送訊息失敗", err);
         }
 
-        // ====== 即時更新 UI 快取與顯示（不用等網路重新拉取）======
-        appendLocalRecord({
-            status: status,
-            time: apiData.time || new Date().toLocaleTimeString("zh-TW", { hour12: false }),
-            ip: ip,
-            isMakeup: isMakeup
-        });
-
         Swal.fire({
             icon: "success",
             title: isMakeup ? "🎉 補打卡成功！" : "🎉 打卡成功！",
-            html: `<div style="font-size: 16px; margin-top: 8px;"><strong>打卡時間：</strong><br><span style="color: #2980b9; font-size: 18px; font-weight: bold;">${apiData.date || getTodayString()} ${apiData.time || ''}</span></div>`,
+            html: `<div style="font-size: 16px; margin-top: 8px;"><strong>打卡時間：</strong><br><span style="color: #2980b9; font-size: 18px; font-weight: bold;">${apiData.date} ${apiData.time}</span></div>`,
             showConfirmButton: false, 
             timer: 1800, 
             backdrop: "rgba(0,0,0,0.5)",
@@ -754,7 +741,6 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         });
     }
 
-    // 背景再做一次最終校對同步
     setTimeout(() => {
         updateTodayRecords(false);
     }, 400);
@@ -763,21 +749,6 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
 function getTodayString() {
     const now = new Date();
     return now.toLocaleDateString("zh-TW", { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, "/");
-}
-
-/* ===== 將新打卡紀錄手動塞入快取並即時渲染 (Optimistic Update) ===== */
-function appendLocalRecord(newRecord) {
-    try {
-        let cached = sessionStorage.getItem("cached_today_records");
-        let records = cached ? JSON.parse(cached) : [];
-        
-        // 檢查是否已有相同狀態，沒有就推入
-        records.push(newRecord);
-        sessionStorage.setItem("cached_today_records", JSON.stringify(records));
-        renderRecords(records);
-    } catch(e) {
-        console.error("即時寫入本地紀錄失敗", e);
-    }
 }
 
 /* ===== 共用紀錄渲染函式 ===== */
@@ -849,4 +820,5 @@ document.getElementById("btnApprove").onclick = () => {
 </script>
 </body>
 </html>
+
 
