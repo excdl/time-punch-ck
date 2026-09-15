@@ -617,7 +617,7 @@ async function sendSelfMessage(record) {
     }
 }
 
-// ===== 圓形漸層動畫打卡函式 (含按鈕鎖定與即時紀錄預覽) =====
+// ===== 圓形漸層動畫打卡函式 =====
 async function performClockIn(status, customDate = "", customTime = "", isMakeup = false) {
     if (!window.userReady && !isMakeup) {
         Swal.fire({ 
@@ -650,12 +650,6 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         lat = geo.lat;
         lng = geo.lng;
     }
-
-    // 🔒 1. 點擊瞬間立即鎖定按鈕，防止重複點擊
-    const btnStart = document.getElementById("btnStart");
-    const btnEnd = document.getElementById("btnEnd");
-    if (btnStart) btnStart.disabled = true;
-    if (btnEnd) btnEnd.disabled = true;
 
     // 動畫啟動
     const wrapper = document.getElementById("countdownWrapper");
@@ -728,31 +722,6 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
             console.error("背景傳送訊息失敗", err);
         }
 
-        // 💡 畫面即時預覽：在彈出提示前，立刻將這筆最新紀錄插入畫面，讓使用者秒見打卡結果
-        const color = status === "下班" ? "#2ecc71" : "#3498db";
-        const networkLabel = window.allowRemote ? "異地打卡" : "公司網路";
-        const networkColor = window.allowRemote ? "#e67e22" : "#7f8c8d";
-        const makeupBadge = isMakeup ? `<span class="badge-makeup">待審核</span>` : "";
-        
-        const newRecordHTML = `
-            <div class="record-item" style="border-left-color: ${color}; animation: bounce 0.4s ease;">
-              <div class="record-info">
-                <div class="record-status">${status} ${makeupBadge}</div>
-                <div class="record-details" style="color: ${networkColor};">${networkLabel}</div>
-              </div>
-              <div class="record-time" style="color: ${color};">${apiData.time}</div>
-            </div>
-        `;
-
-        const todayRecords = document.getElementById("todayRecords");
-        if (todayRecords) {
-            if (todayRecords.innerHTML.includes("今日尚無打卡紀錄") || todayRecords.innerHTML.includes("今日打卡紀錄讀取失敗")) {
-                todayRecords.innerHTML = newRecordHTML;
-            } else {
-                todayRecords.innerHTML += newRecordHTML;
-            }
-        }
-
         Swal.fire({
             icon: "success",
             title: isMakeup ? "🎉 補打卡成功！" : "🎉 打卡成功！",
@@ -775,10 +744,6 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
     setTimeout(() => {
         updateTodayRecords(false);
     }, 400);
-
-    // 🔓 2. 整個流程結束後解除按鈕鎖定
-    if (btnStart) btnStart.disabled = false;
-    if (btnEnd) btnEnd.disabled = false;
 }
 
 function getTodayString() {
@@ -788,9 +753,6 @@ function getTodayString() {
 
 /* ===== 共用紀錄渲染函式 ===== */
 function renderRecords(data) {
-    const todayRecords = document.getElementById("todayRecords");
-    if (!todayRecords) return;
-
     if (!data || !data.length) {
         todayRecords.innerHTML = `<div class="records-empty">今日尚無打卡紀錄</div>`;
         return;
@@ -820,8 +782,6 @@ function renderRecords(data) {
 /* ===== 優化後的今日紀錄非同步更新函式 (支援快取與骨架屏) ===== */
 async function updateTodayRecords(isFastRender = false){
   if (!window.userId) return;
-  const todayRecords = document.getElementById("todayRecords");
-  if (!todayRecords) return;
   
   if (!isFastRender && !sessionStorage.getItem("cached_today_records")) {
       todayRecords.innerHTML = `
