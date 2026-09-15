@@ -1,382 +1,349 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>智能打卡系統</title>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<style>
-:root {
-    --bg-color: #f0f4f8;
-    --card-bg: #ffffff;
-    --text-main: #2c3e50;
-    --text-sub: #7f8c8d;
-    --start-gradient: linear-gradient(135deg, #ff9f43, #ee5253);
-    --end-gradient: linear-gradient(135deg, #3498db, #2980b9);
-    --approve-gradient: linear-gradient(145deg, #8e44ad, #663399);
-}
-
-body {
-    font-family: "Arial", "Noto Sans TC", sans-serif;
-    background: var(--bg-color);
-    margin: 0;
-    padding: 0;
-    display: flex;
-    justify-content: center;
-    color: var(--text-main);
-}
-
-/* App 外框容器，充滿行動裝置畫面 */
-.app-container {
-    width: 100%;
-    max-width: 480px;
-    min-height: 100vh;
-    background: var(--bg-color);
-    display: flex;
-    flex-direction: column;
-    box-sizing: border-box;
-    padding: 16px 16px 32px 16px;
-    gap: 16px;
-}
-
-/* App 頂部導覽列 */
-.app-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 4px;
-}
-.user-profile-container {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-/* 虛擬頭像樣式 */
-.user-avatar {
-    width: 46px;
-    height: 46px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #6c5ce7, #a29bfe);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 20px;
-    font-weight: bold;
-    box-shadow: 0 4px 10px rgba(108, 92, 231, 0.3);
-    flex-shrink: 0;
-}
-
-.user-profile {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-#userInfo {
-    font-size: 20px;
-    font-weight: bold;
-    color: var(--text-main);
-}
-.app-subtitle {
-    font-size: 14px;
-    font-weight: bold;
-    color: var(--text-sub);
-}
-
-/* 狀態標籤縮小 20% 且強制不換行 */
-#statusInfo {
-    font-size: 14px; 
-    font-weight: bold;
-    color: white;
-    padding: 6px 14px; 
-    border-radius: 20px;
-    background: #95a5a6;
-    text-align: center;
-    white-space: nowrap;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-    flex-shrink: 0;
-}
-
-/* 核心儀表板卡片 */
-.dashboard-card {
-    background: var(--card-bg);
-    border-radius: 20px;
-    padding: 24px 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-    box-shadow: 0 15px 30px rgba(0,0,0,0.15);
-}
-
-/* 數位時鐘樣式 */
-.clock-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    background: linear-gradient(145deg, #f8fafc, #edf2f7);
-    padding: 14px 20px;
-    border-radius: 16px;
-    box-shadow: inset 0 2px 5px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.03);
-    border: 1px solid #e2e8f0;
-}
-
-.time-box {
-    background: #ffffff;
-    padding: 8px 12px;
-    border-radius: 10px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-    border: 1px solid #edf2f7;
-}
-
-#timeHour, #timeMin, #timeSec {
-    font-size: 38px;       
-    font-weight: normal;   
-    color: var(--text-main);
-    font-family: "Courier New", Courier, monospace;
-    letter-spacing: 1px;
-}
-
-.time-separator {
-    font-size: 32px;
-    font-weight: normal;
-    color: #a0aec0;
-    padding-bottom: 4px;
-    animation: pulseSeparator 1.5s infinite;
-}
-
-@keyframes pulseSeparator {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-}
-
-/* 大打卡按鈕群組 */
-.buttons-container {
-    display: flex;
-    gap: 15px;
-    width: 100%;
-}
-.buttons-container button {
-    flex: 1;
-    padding: 15px 0;
-    font-size: 22px;
-    font-weight: bold;
-    border-radius: 12px;
-    border: none;
-    cursor: pointer;
-    color: white;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-    transition: all 0.2s;
-}
-
-#btnStart { background: var(--start-gradient); }
-#btnEnd { background: var(--end-gradient); }
-
-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    box-shadow: none !important;
-    transform: none !important;
-}
-
-button:not(:disabled):active {
-    transform: scale(0.97);
-}
-
-/* 今日打卡紀錄區塊 */
-.section-container {
-    background: var(--card-bg);
-    border-radius: 16px;
-    padding: 18px;
-    box-shadow: 0 10px 20px rgba(0,0,0,0.08);
-    border: 1px solid #ddd;
-}
-.section-title {
-    font-size: 16px;
-    font-weight: bold;
-    color: var(--text-main);
-    margin-bottom: 12px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-#todayRecords {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-.record-item {
-    background: #fafafa;
-    border-radius: 10px;
-    padding: 12px 14px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-left: 4px solid #3498db;
-    box-sizing: border-box;
-    font-size: 16px;
-}
-.record-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-.record-status {
-    font-size: 16px;
-    font-weight: bold;
-    color: #2c3e50;
-}
-.record-details {
-    font-size: 12px;
-    color: #7f8c8d;
-}
-.record-time {
-    font-size: 18px;
-    font-weight: bold;
-    color: #2c3e50;
-}
-.badge-makeup {
-    background: #e67e22;
-    color: white;
-    font-size: 11px;
-    padding: 2px 6px;
-    border-radius: 6px;
-    margin-left: 4px;
-    vertical-align: middle;
-}
-.records-empty {
-    text-align: center;
-    color: var(--text-sub);
-    font-size: 15px;
-    padding: 15px 0;
-}
-
-/* 簽核按鈕 */
-#btnApprove {
-    padding: 14px 20px;
-    font-size: 18px;
-    font-weight: bold;
-    border-radius: 10px;
-    background: var(--approve-gradient);
-    color: white;
-    display: none;
-    width: 100%;
-    cursor: pointer;
-    border: none;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-    transition: all 0.2s;
-}
-#btnApprove:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 15px rgba(0,0,0,0.15);
-}
-
-/* SweetAlert2 自訂外觀 */
-.swal2-popup.custom-swal-popup {
-    border-radius: 20px !important;
-    padding: 24px !important;
-    font-family: "Arial", "Noto Sans TC", sans-serif !important;
-    box-shadow: 0 20px 40px rgba(0,0,0,0.2) !important;
-}
-.swal2-title {
-    font-size: 22px !important;
-    color: #2c3e50 !important;
-    font-weight: bold !important;
-}
-.swal2-html-container {
-    font-size: 16px !important;
-    color: #555 !important;
-}
-.swal2-styled.swal2-confirm {
-    background: linear-gradient(135deg, #3498db, #2980b9) !important;
-    border-radius: 10px !important;
-    font-size: 16px !important;
-    font-weight: bold !important;
-    padding: 10px 24px !important;
-    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3) !important;
-}
-/* 倒數動畫（全螢幕置中遮罩） */
-#countdownWrapper {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(255, 255, 255, 0.85);
-    z-index: 9999;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-}
-#circleProgress { 
-    fill: none; 
-    stroke-width: 12; 
-    stroke-linecap: round; 
-}
-#countdownText { 
-    margin-top: 15px;
-    font-size: 16px;
-    font-weight: bold; 
-    color: #2c3e50;
-    white-space: nowrap; 
-}
-
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>智能打卡系統</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        :root {
+            --bg-color: #f0f4f8;
+            --card-bg: #ffffff;
+            --text-main: #2c3e50;
+            --text-sub: #7f8c8d;
+            --start-gradient: linear-gradient(135deg, #ff9f43, #ee5253);
+            --end-gradient: linear-gradient(135deg, #3498db, #2980b9);
+            --approve-gradient: linear-gradient(145deg, #8e44ad, #663399);
+        }
+        body {
+            font-family: "Arial", "Noto Sans TC", sans-serif;
+            background: var(--bg-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            color: var(--text-main);
+        }
+        .app-container {
+            width: 100%;
+            max-width: 480px;
+            min-height: 100vh;
+            background: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+            padding: 16px 16px 32px 16px;
+            gap: 16px;
+        }
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 4px;
+        }
+        .user-profile-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .user-avatar {
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(108, 92, 231, 0.3);
+            flex-shrink: 0;
+        }
+        .user-profile {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        #userInfo {
+            font-size: 20px;
+            font-weight: bold;
+            color: var(--text-main);
+        }
+        .app-subtitle {
+            font-size: 14px;
+            font-weight: bold;
+            color: var(--text-sub);
+        }
+        #statusInfo {
+            font-size: 14px;
+            font-weight: bold;
+            color: white;
+            padding: 6px 14px;
+            border-radius: 20px;
+            background: #95a5a6;
+            text-align: center;
+            white-space: nowrap;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            flex-shrink: 0;
+        }
+        .dashboard-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 24px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+        }
+        .clock-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: linear-gradient(145deg, #f8fafc, #edf2f7);
+            padding: 14px 20px;
+            border-radius: 16px;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.03);
+            border: 1px solid #e2e8f0;
+        }
+        .time-box {
+            background: #ffffff;
+            padding: 8px 12px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+            border: 1px solid #edf2f7;
+        }
+        #timeHour, #timeMin, #timeSec {
+            font-size: 38px;
+            font-weight: normal;
+            color: var(--text-main);
+            font-family: "Courier New", Courier, monospace;
+            letter-spacing: 1px;
+        }
+        .time-separator {
+            font-size: 32px;
+            font-weight: normal;
+            color: #a0aec0;
+            padding-bottom: 4px;
+            animation: pulseSeparator 1.5s infinite;
+        }
+        @keyframes pulseSeparator {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .buttons-container {
+            display: flex;
+            gap: 15px;
+            width: 100%;
+        }
+        .buttons-container button {
+            flex: 1;
+            padding: 15px 0;
+            font-size: 22px;
+            font-weight: bold;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            color: white;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            transition: all 0.2s;
+        }
+        #btnStart { background: var(--start-gradient); }
+        #btnEnd { background: var(--end-gradient); }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            box-shadow: none !important;
+            transform: none !important;
+        }
+        button:not(:disabled):active {
+            transform: scale(0.97);
+        }
+        .section-container {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 18px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.08);
+            border: 1px solid #ddd;
+        }
+        .section-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: var(--text-main);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #todayRecords {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .record-item {
+            background: #fafafa;
+            border-radius: 10px;
+            padding: 12px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 4px solid #3498db;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        .record-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .record-status {
+            font-size: 16px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .record-details {
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+        .record-time {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .badge-makeup {
+            background: #e67e22;
+            color: white;
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 6px;
+            margin-left: 4px;
+            vertical-align: middle;
+        }
+        .records-empty {
+            text-align: center;
+            color: var(--text-sub);
+            font-size: 15px;
+            padding: 15px 0;
+        }
+        #btnApprove {
+            padding: 14px 20px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 10px;
+            background: var(--approve-gradient);
+            color: white;
+            display: none;
+            width: 100%;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            transition: all 0.2s;
+        }
+        #btnApprove:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+        }
+        .swal2-popup.custom-swal-popup {
+            border-radius: 20px !important;
+            padding: 24px !important;
+            font-family: "Arial", "Noto Sans TC", sans-serif !important;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2) !important;
+        }
+        .swal2-title {
+            font-size: 22px !important;
+            color: #2c3e50 !important;
+            font-weight: bold !important;
+        }
+        .swal2-html-container {
+            font-size: 16px !important;
+            color: #555 !important;
+        }
+        .swal2-styled.swal2-confirm {
+            background: linear-gradient(135deg, #3498db, #2980b9) !important;
+            border-radius: 10px !important;
+            font-size: 16px !important;
+            font-weight: bold !important;
+            padding: 10px 24px !important;
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3) !important;
+        }
+        #countdownWrapper {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(255, 255, 255, 0.85);
+            z-index: 9999;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        #circleProgress {
+            fill: none;
+            stroke-width: 12;
+            stroke-linecap: round;
+        }
+        #countdownText {
+            margin-top: 15px;
+            font-size: 16px;
+            font-weight: bold;
+            color: #2c3e50;
+            white-space: nowrap;
+        }
+    </style>
 </head>
 <body>
+    <div class="app-container">
+        <!-- 頂部資訊列 -->
+        <div class="app-header">
+            <div class="user-profile-container">
+                <div class="user-avatar" id="userAvatar">👤</div>
+                <div class="user-profile">
+                    <div id="userInfo">載入中...</div>
+                    <div class="app-subtitle" id="headerDate">載入日期中...</div>
+                </div>
+            </div>
+            <div id="statusInfo">檢查中...</div>
+        </div>
 
-<div class="app-container">
-  <!-- 頂部資訊列 -->
-  <div class="app-header">
-    <div class="user-profile-container">
-      <div class="user-avatar" id="userAvatar">👤</div>
-      <div class="user-profile">
-        <div id="userInfo">載入中...</div>
-        <div class="app-subtitle" id="headerDate">載入日期中...</div>
-      </div>
+        <!-- 打卡儀表板主卡片 -->
+        <div class="dashboard-card">
+            <div class="clock-container">
+                <div class="time-box"><span id="timeHour">00</span></div>
+                <span class="time-separator">:</span>
+                <div class="time-box"><span id="timeMin">00</span></div>
+                <span class="time-separator">:</span>
+                <div class="time-box"><span id="timeSec">00</span></div>
+            </div>
+            <div class="buttons-container">
+                <button id="btnStart" disabled>上班</button>
+                <button id="btnEnd" disabled>下班</button>
+            </div>
+        </div>
+
+        <!-- 圓形倒數動畫（全螢幕置中遮罩） -->
+        <div id="countdownWrapper">
+            <svg width="120" height="120">
+                <circle cx="60" cy="60" r="50" stroke="#eee" stroke-width="12" fill="none"></circle>
+                <circle id="circleProgress" cx="60" cy="60" r="50" stroke="#3498db" stroke-width="12" fill="none" transform="rotate(-90 60 60)"></circle>
+            </svg>
+            <div id="countdownText">打卡中...</div>
+        </div>
+
+        <!-- 今日紀錄卡片 -->
+        <div class="section-container">
+            <div class="section-title">📋 今日打卡紀錄</div>
+            <div id="todayRecords" class="records-empty">正在載入紀錄…</div>
+        </div>
+
+        <!-- 主管簽核按鈕 -->
+        <button id="btnApprove">查看 | 簽核</button>
     </div>
-    <div id="statusInfo">檢查中...</div>
-  </div>
 
-  <!-- 打卡儀表板主卡片 -->
-  <div class="dashboard-card">
-    <div class="clock-container">
-      <div class="time-box"><span id="timeHour">00</span></div>
-      <span class="time-separator">:</span>
-      <div class="time-box"><span id="timeMin">00</span></div>
-      <span class="time-separator">:</span>
-      <div class="time-box"><span id="timeSec">00</span></div>
-    </div>
-
-    <div class="buttons-container">
-      <button id="btnStart" disabled>上班</button>
-      <button id="btnEnd" disabled>下班</button>
-    </div>
-  </div>
-
-    <!-- 圓形倒數動畫（全螢幕置中遮罩） -->
-<div id="countdownWrapper">
-    <svg width="120" height="120">
-        <circle cx="60" cy="60" r="50" stroke="#eee" stroke-width="12" fill="none"></circle>
-        <circle id="circleProgress" cx="60" cy="60" r="50" stroke="#3498db" stroke-width="12" fill="none" transform="rotate(-90 60 60)"></circle>
-    </svg>
-    <div id="countdownText">打卡中...</div>
-</div>
-
-  <!-- 今日紀錄卡片 -->
-  <div class="section-container">
-    <div class="section-title">📋 今日打卡紀錄</div>
-    <div id="todayRecords" class="records-empty">正在載入紀錄…</div>
-  </div>
-
-  <!-- 主管簽核按鈕 -->
-  <button id="btnApprove">查看 | 簽核</button>
-</div>
- 
 <script>
 const API_ENDPOINT = "https://script.google.com/macros/s/AKfycbwG47N38cIpfYosr0MIv7AR35RG5s_vZGPZ3w8VnVuoN1TqYoACUIfvcCpEXoyqMFyrQA/exec";
 const COMPANY_IPS  = ["220.134.112.245", "114.34.60.48"];
@@ -556,7 +523,7 @@ function fixTimeFormat(t) {
     return t;
 }
 
-// ====== 初始化載入 (加入快取秒開機制) ======
+// ====== 初始化載入 (極速平行優化版) ======
 window.onload = async () => {
   statusInfo.textContent = "檢查中...";
   statusInfo.style.background = "#95a5a6";
@@ -566,12 +533,22 @@ window.onload = async () => {
   loadUserFromCache();
 
   try {
-    // 2. 平行執行 LIFF 初始化與 IP 預載入
+    // 2. 如果快取有 userId，立即同步拉取今日打卡紀錄不卡 LIFF
+    if (window.userId) {
+      updateTodayRecords(true);
+    }
+
+    // 3. 平行執行 LIFF 初始化、IP 預載入
     await Promise.all([
       initUser(),
       preloadIP()
     ]);
     
+    // 若剛才沒有快取 userId，此時已取得，馬上抓取紀錄
+    if (window.userId) {
+      updateTodayRecords(true);
+    }
+
     await updateStatus(true);
     await updateTodayRecords(false);
     await updateStatus(true);
@@ -722,6 +699,25 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
             console.error("背景傳送訊息失敗", err);
         }
 
+        // ⚡ 樂觀更新：立刻將新打卡紀錄插入前端快取與畫面，達到 0 延遲
+        try {
+            const cachedRecordsKey = "cached_today_records";
+            let currentRecords = JSON.parse(sessionStorage.getItem(cachedRecordsKey) || "[]");
+            
+            const newRecord = {
+                status: status,
+                time: apiData.time || new Date().toLocaleTimeString("zh-TW", { hour12: false }),
+                ip: ip,
+                isMakeup: isMakeup
+            };
+            
+            currentRecords.push(newRecord);
+            sessionStorage.setItem(cachedRecordsKey, JSON.stringify(currentRecords));
+            renderRecords(currentRecords);
+        } catch (e) {
+            console.error("樂觀更新快取失敗", e);
+        }
+
         Swal.fire({
             icon: "success",
             title: isMakeup ? "🎉 補打卡成功！" : "🎉 打卡成功！",
@@ -742,7 +738,7 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
     }
 
     setTimeout(() => {
-        updateTodayRecords(false);
+        updateTodayRecords(true);
     }, 400);
 }
 
