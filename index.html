@@ -617,7 +617,31 @@ async function sendSelfMessage(record) {
     }
 }
 
-// ===== 圓形漸層動畫打卡函式 =====
+// ===== 顯示「打卡中」轉圈彈窗 =====
+function showClockLoading(status, isMakeup) {
+    Swal.fire({
+        title: isMakeup ? "補打卡中..." : `${status}打卡中...`,
+        html: `
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding-top:8px;">
+                <div style="width:52px; height:52px; border:5px solid #e8edf2; border-top:5px solid #3498db; border-radius:50%; animation:clockSpin 0.7s linear infinite;"></div>
+                <div style="margin-top:16px; font-size:14px; color:#7f8c8d;">正在確認打卡資料...</div>
+            </div>
+            <style>
+                @keyframes clockSpin {
+                    from { transform:rotate(0deg); }
+                    to { transform:rotate(360deg); }
+                }
+            </style>
+        `,
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        backdrop: "rgba(0,0,0,0.45)",
+        customClass: { popup: "custom-swal-popup" }
+    });
+}
+
+// ===== 核心打卡函式（整合 SweetAlert2 載入轉圈） =====
 async function performClockIn(status, customDate = "", customTime = "", isMakeup = false) {
     if (!window.userReady && !isMakeup) {
         Swal.fire({ 
@@ -651,52 +675,10 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         lng = geo.lng;
     }
 
-    // 動畫啟動
-    const wrapper = document.getElementById("countdownWrapper");
-    const circle = document.getElementById("circleProgress");
-    const text = document.getElementById("countdownText");
+    // 1. 立即顯示 SweetAlert2 旋轉動畫彈窗
+    showClockLoading(status, isMakeup);
 
-    if (wrapper && circle && text) {
-        wrapper.style.display = "flex";
-        text.textContent = isMakeup ? "補打卡中..." : "打卡中...";
-
-        const colors = {
-            上班: { start: { r:52, g:152, b:219 }, end: { r:41, g:128, b:185 } },
-            下班: { start: { r:46, g:204, b:113 }, end: { r:39, g:174, b:96 } },
-            補打卡: { start: { r:243, g:156, b:18 }, end: { r:243, g:156, b:18 } }
-        };
-        const { start: startColor, end: endColor } = isMakeup ? colors.補打卡 : (colors[status] || colors.上班);
-
-        const radius = 50;
-        const circumference = 2 * Math.PI * radius;
-        circle.style.strokeDasharray = circumference;
-        circle.style.strokeDashoffset = circumference;
-
-        let progress = 0;
-        function animate() {
-            progress = Math.min(progress + 0.007, 1);
-            circle.style.strokeDashoffset = circumference * (1 - progress);
-
-            const rC = Math.round(startColor.r*(1-progress) + endColor.r*progress);
-            const gC = Math.round(startColor.g*(1-progress) + endColor.g*progress);
-            const bC = Math.round(startColor.b*(1-progress) + endColor.b*progress);
-            circle.style.stroke = `rgb(${rC},${gC},${bC})`;
-
-            if(progress < 1) {
-                requestAnimationFrame(animate);
-            } else {
-                wrapper.style.transition = "opacity 0.6s";
-                wrapper.style.opacity = 0;
-                setTimeout(() => {
-                    wrapper.style.display = "none";
-                    wrapper.style.opacity = 1;
-                }, 300);
-            }
-        }
-        requestAnimationFrame(animate);
-    }
-
-    // 發送 API
+    // 2. 發送 API 請求
     let apiData = null;
     try {
         const res = await fetch(API_ENDPOINT, {
