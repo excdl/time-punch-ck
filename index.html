@@ -288,40 +288,6 @@ button:not(:disabled):active {
     padding: 10px 24px !important;
     box-shadow: 0 4px 12px rgba(52,152,219,0.3) !important;
 }
-/* 打卡進度遮罩 */
-#countdownWrapper {
-    display: none;
-    position: fixed;
-    inset: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(255,255,255,0.88);
-    z-index: 99999;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-}
-#circleProgress {
-    fill: none;
-    stroke-width: 12;
-    stroke-linecap: round;
-    transition: stroke-dashoffset 0.08s linear;
-}
-#countdownText {
-    margin-top: 15px;
-    font-size: 16px;
-    font-weight: bold;
-    color: #2c3e50;
-    white-space: nowrap;
-}
-.progress-spinner {
-    animation: progressSpin 1.2s linear infinite;
-    transform-origin: center;
-}
-@keyframes progressSpin {
-    from { transform: rotate(-90deg); }
-    to { transform: rotate(270deg); }
-}
 /* 小螢幕調整 */
 @media (max-width: 360px) {
     #timeHour, #timeMin, #timeSec {
@@ -377,14 +343,6 @@ button:not(:disabled):active {
             <button id="btnEnd" disabled>下班</button>
         </div>
     </div>
-    <!-- 打卡進度遮罩 -->
-    <div id="countdownWrapper">
-        <svg width="120" height="120" viewBox="0 0 120 120">
-            <circle cx="60" cy="60" r="50" stroke="#eee" stroke-width="12" fill="none"></circle>
-            <circle id="circleProgress" cx="60" cy="60" r="50" stroke="#3498db" stroke-width="12" fill="none" transform="rotate(-90 60 60)" stroke-dasharray="314.159" stroke-dashoffset="314.159"></circle>
-        </svg>
-        <div id="countdownText">打卡中...</div>
-    </div>
     <!-- 今日紀錄 -->
     <div class="section-container">
         <div class="section-title">📋 今日打卡紀錄</div>
@@ -412,9 +370,6 @@ const btnStart = document.getElementById("btnStart");
 const btnEnd = document.getElementById("btnEnd");
 const todayRecords = document.getElementById("todayRecords");
 const btnApprove = document.getElementById("btnApprove");
-const countdownWrapper = document.getElementById("countdownWrapper");
-const circleProgress = document.getElementById("circleProgress");
-const countdownText = document.getElementById("countdownText");
 
 /* =========================================================
    全域狀態
@@ -424,7 +379,6 @@ window.allowRemote = false;
 window.userId = "";
 window.userName = "";
 let isClocking = false;
-let clockAnimationTimer = null;
 
 /* =========================================================
    工具：安全 HTML
@@ -669,45 +623,55 @@ function getTodayString() {
 }
 
 /* =========================================================
-   打卡動畫開始
+   打卡讀取中彈窗 (SweetAlert2)
 ========================================================= */
-function startClockAnimation(status, isMakeup) {
-    stopClockAnimation();
-    countdownWrapper.style.display = "flex";
-    countdownWrapper.style.opacity = "1";
-    countdownText.textContent = isMakeup ? "補打卡中..." : "打卡中...";
-    const colors = { 上班: "#3498db", 下班: "#2ecc71", 補打卡: "#f39c12" };
-    circleProgress.style.stroke = isMakeup ? colors.補打卡 : (colors[status] || colors.上班);
-    const radius = 50;
-    const circumference = 2 * Math.PI * radius;
-    circleProgress.style.strokeDasharray = circumference;
-    circleProgress.style.strokeDashoffset = circumference;
-    let progress = 0;
-    const startTime = Date.now();
-    const maxVisualTime = 15000;
-    function animate() {
-        if (countdownWrapper.style.display === "none") return;
-        const elapsed = Date.now() - startTime;
-        progress = Math.min(elapsed / maxVisualTime, 0.95);
-        circleProgress.style.strokeDashoffset = circumference * (1 - progress);
-        clockAnimationTimer = requestAnimationFrame(animate);
-    }
-    clockAnimationTimer = requestAnimationFrame(animate);
-}
+function showClockLoading(titleText = "打卡中", subText = "正在確認打卡資料，請稍候...") {
+    Swal.fire({
+        html: `
+            <div style="padding:15px 0;text-align:center;">
+                <div style="
+                    width:50px;
+                    height:50px;
+                    margin:0 auto 18px auto;
+                    border:4px solid #f3f3f3;
+                    border-top:4px solid #3498db;
+                    border-radius:50%;
+                    animation:spin 0.8s linear infinite;
+                "></div>
 
-/* =========================================================
-   打卡動畫結束
-========================================================= */
-function stopClockAnimation() {
-    if (clockAnimationTimer) {
-        cancelAnimationFrame(clockAnimationTimer);
-        clockAnimationTimer = null;
-    }
-    countdownWrapper.style.opacity = "0";
-    setTimeout(() => {
-        countdownWrapper.style.display = "none";
-        countdownWrapper.style.opacity = "1";
-    }, 120);
+                <h3 style="
+                    margin:0 0 8px 0;
+                    color:#2c3e50;
+                    font-size:20px;
+                    font-weight:bold;
+                ">
+                    ${escapeHtml(titleText)}
+                </h3>
+
+                <p style="
+                    margin:0;
+                    color:#7f8c8d;
+                    font-size:14px;
+                ">
+                    ${escapeHtml(subText)}
+                </p>
+
+                <style>
+                    @keyframes spin {
+                        0% { transform:rotate(0deg); }
+                        100% { transform:rotate(360deg); }
+                    }
+                </style>
+            </div>
+        `,
+        showConfirmButton: false,
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        backdrop: "rgba(0,0,0,0.5)",
+        customClass: {
+            popup: "custom-swal-popup"
+        }
+    });
 }
 
 /* =========================================================
@@ -854,7 +818,10 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
             lat = geo.lat;
             lng = geo.lng;
         }
-        startClockAnimation(status, isMakeup);
+        
+        // 顯示載入動畫彈窗
+        showClockLoading(isMakeup ? "補打卡中" : "打卡中", "正在確認打卡資料，請稍候...");
+
         const body = {
             userId: window.userId,
             displayName: window.userName,
@@ -884,7 +851,7 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
             }
         } catch (networkError) {
             console.error("打卡 API 錯誤:", networkError);
-            stopClockAnimation();
+            Swal.close(); // 關閉讀取燈箱
             await Swal.fire({
                 icon: "error",
                 title: "打卡連線異常",
@@ -895,7 +862,9 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
             await updateTodayRecords(false);
             return;
         }
-        stopClockAnimation();
+
+        Swal.close(); // 關閉讀取燈箱
+
         const message = String(apiData?.message || "");
         const isSuccess = message.includes("成功") || message.includes("更新");
         if (isSuccess) {
@@ -929,7 +898,7 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         await updateTodayRecords(false);
     } catch (error) {
         console.error("performClockIn 發生錯誤:", error);
-        stopClockAnimation();
+        Swal.close(); // 確保關閉讀取燈箱
         await Swal.fire({
             icon: "error",
             title: "打卡失敗",
@@ -938,7 +907,7 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
             customClass: { popup: "custom-swal-popup" }
         });
     } finally {
-        stopClockAnimation();
+        Swal.close();
         isClocking = false;
         try {
             await updateStatus();
