@@ -427,7 +427,7 @@ function setButtonsLock(locked, startText = "上班", endText = "下班") {
 /* =========================================================
    Fetch Timeout
 ========================================================= */
-async function fetchWithTimeout(url, options = {}, timeout = 10000) {
+async function fetchWithTimeout(url, options = {}, timeout = 8000) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
     try {
@@ -439,21 +439,22 @@ async function fetchWithTimeout(url, options = {}, timeout = 10000) {
 }
 
 /* =========================================================
-   IP
+   IP (加入背景非同步更新防卡死)
 ========================================================= */
-async function preloadIP() {
+async function preloadIP(forceRefresh = false) {
     const cache = sessionStorage.getItem("myIP");
-    if (cache) return cache;
+    if (cache && !forceRefresh) return cache;
     try {
-        const response = await fetchWithTimeout("https://api.ipify.org?format=json", {}, 3000);
-        if (!response.ok) return "";
+        // 將逾時縮短至 2 秒，避免行動網路很慢時卡住
+        const response = await fetchWithTimeout("https://api.ipify.org?format=json", {}, 2000);
+        if (!response.ok) return cache || "";
         const data = await response.json();
         const ip = String(data.ip || "").trim();
         if (ip) sessionStorage.setItem("myIP", ip);
-        return ip;
+        return ip || cache || "";
     } catch (error) {
-        console.warn("取得 IP 失敗:", error);
-        return "";
+        console.warn("取得 IP 逾時或失敗，使用快取或略過:", error);
+        return cache || "";
     }
 }
 
@@ -538,7 +539,7 @@ async function updateStatus() {
     }
     try {
         const url = `${API_ENDPOINT}?action=checkRemote&userId=${encodeURIComponent(window.userId)}`;
-        const response = await fetchWithTimeout(url, {}, 7000);
+        const response = await fetchWithTimeout(url, {}, 5000);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const remoteData = await response.json();
         const remoteAllowed = remoteData.allowed === true;
@@ -562,7 +563,7 @@ async function updateStatus() {
 }
 
 /* =========================================================
-   GPS
+   GPS (縮短逾時至 3 秒，避免定位過久卡死)
 ========================================================= */
 function getGeoLocation() {
     return new Promise(resolve => {
@@ -578,10 +579,10 @@ function getGeoLocation() {
                 });
             },
             error => {
-                console.warn("GPS 取得失敗:", error);
+                console.warn("GPS 取得失敗或逾時:", error);
                 resolve({ lat: "", lng: "" });
             },
-            { timeout: 5000, enableHighAccuracy: true, maximumAge: 30000 }
+            { timeout: 3000, enableHighAccuracy: false, maximumAge: 60000 }
         );
     });
 }
@@ -735,7 +736,7 @@ async function updateTodayRecords(showLoading = false) {
     try {
         const date = getTodayString();
         const url = `${API_ENDPOINT}?action=getToday&userId=${encodeURIComponent(window.userId)}&date=${encodeURIComponent(date)}`;
-        const response = await fetchWithTimeout(url, {}, 8000);
+        const response = await fetchWithTimeout(url, {}, 6000);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         sessionStorage.setItem("cached_today_records", JSON.stringify(data));
@@ -779,7 +780,7 @@ function renderRecords(data) {
 }
 
 /* =========================================================
-   打卡主程式
+   打卡主程式 (效能優化版)
 ========================================================= */
 async function performClockIn(status, customDate = "", customTime = "", isMakeup = false) {
     if (isClocking) return;
@@ -804,23 +805,41 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         });
         return;
     }
+
     isClocking = true;
     setButtonsLock(true, "處理中...", "處理中...");
-    try {
-        const ip = await preloadIP();
-        if (!isMakeup && !isCompanyIP(ip) && !window.allowRemote) {
-            throw new Error("非公司網路且未授權異地打卡！");
+    showClockLoading(isMakeup ? "補打卡中" : "打卡中", "正在確認打卡資料，請稍候...");
+
+    // 加入防呆計時器：若 12 秒內伺服器完全無回應，強制解除卡死狀態
+    let hasFinished = false;
+    const safetyTimer = setTimeout(() => {
+        if (!hasFinished) {
+            hasFinished = true;
+            Swal.close();
+            Swal.fire({
+                icon: "error",
+                title: "網路回應逾時",
+                html: `<span style="color:#c0392b;">伺服器回應較慢，請至下方「今日打卡紀錄」確認是否已打卡成功</span>`,
+                confirmButtonText: "確定",
+                customClass: { popup: "custom-swal-popup" }
+            });
+            isClocking = false;
+            updateStatus();
         }
+    }, 12000);
+
+    try {
+        // 優先使用快取或快速取得 IP，避免點擊後等待過久
+        const ip = sessionStorage.getItem("myIP") || "";
+        
         let lat = "";
         let lng = "";
-        if (window.allowRemote && !isCompanyIP(ip)) {
+        // 只有在需要異地打卡時才同時發動 GPS 取得，並設定極短逾時
+        if (!isMakeup && !isCompanyIP(ip) && window.allowRemote) {
             const geo = await getGeoLocation();
             lat = geo.lat;
             lng = geo.lng;
         }
-        
-        // 顯示載入動畫彈窗
-        showClockLoading(isMakeup ? "補打卡中" : "打卡中", "正在確認打卡資料，請稍候...");
 
         const body = {
             userId: window.userId,
@@ -833,37 +852,30 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
             customTime: customTime,
             isMakeup: isMakeup
         };
+
+        const response = await fetchWithTimeout(API_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify(body)
+        }, 10000);
+
+        if (hasFinished) return; // 若已被 safetyTimer 攔截則中斷
+        hasFinished = true;
+        clearTimeout(safetyTimer);
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const responseText = await response.text();
+        if (!responseText) throw new Error("伺服器沒有回傳資料");
+
         let apiData;
         try {
-            const response = await fetchWithTimeout(API_ENDPOINT, {
-                method: "POST",
-                headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: JSON.stringify(body)
-            }, 15000);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const responseText = await response.text();
-            if (!responseText) throw new Error("伺服器沒有回傳資料");
-            try {
-                apiData = JSON.parse(responseText);
-            } catch (jsonError) {
-                console.error("API 回傳內容:", responseText);
-                throw new Error("伺服器回覆格式錯誤");
-            }
-        } catch (networkError) {
-            console.error("打卡 API 錯誤:", networkError);
-            Swal.close(); // 關閉讀取燈箱
-            await Swal.fire({
-                icon: "error",
-                title: "打卡連線異常",
-                html: `<span style="color:#c0392b;">網路連線異常，請至下方「今日打卡紀錄」確認是否已打卡成功</span>`,
-                confirmButtonText: "確定",
-                customClass: { popup: "custom-swal-popup" }
-            });
-            await updateTodayRecords(false);
-            return;
+            apiData = JSON.parse(responseText);
+        } catch (jsonError) {
+            console.error("API 回傳內容:", responseText);
+            throw new Error("伺服器回覆格式錯誤");
         }
 
-        Swal.close(); // 關閉讀取燈箱
+        Swal.close();
 
         const message = String(apiData?.message || "");
         const isSuccess = message.includes("成功") || message.includes("更新");
@@ -897,17 +909,21 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         }
         await updateTodayRecords(false);
     } catch (error) {
+        if (hasFinished) return;
+        hasFinished = true;
+        clearTimeout(safetyTimer);
+
         console.error("performClockIn 發生錯誤:", error);
-        Swal.close(); // 確保關閉讀取燈箱
+        Swal.close();
         await Swal.fire({
             icon: "error",
-            title: "打卡失敗",
-            html: `<span style="color:#c0392b;">${escapeHtml(error?.message || "系統發生錯誤，請稍後再試")}</span>`,
+            title: "打卡連線異常",
+            html: `<span style="color:#c0392b;">${escapeHtml(error?.message || "網路連線異常，請檢查今日紀錄")}</span>`,
             confirmButtonText: "確定",
             customClass: { popup: "custom-swal-popup" }
         });
+        await updateTodayRecords(false);
     } finally {
-        Swal.close();
         isClocking = false;
         try {
             await updateStatus();
@@ -926,6 +942,7 @@ window.addEventListener("load", async () => {
     setButtonsLock(true, "同步中...", "同步中...");
     loadUserFromCache();
     try {
+        // 平行載入，並加入逾時防護讓初始化更快完成
         await Promise.all([initUser(), preloadIP()]);
         await Promise.all([updateStatus(), updateTodayRecords(false)]);
     } catch (error) {
