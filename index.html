@@ -355,7 +355,330 @@ button:not(:disabled):active {
 /* =========================================================
    基本設定
 ========================================================= */
-const API_ENDPOINT = "https://script.google.com/macros/s/AKfycbwaMSV-bs4O0_TIz5mLfVQImENVnBKdD-pGf3TH31gTBGAPeO2YCUBGU2B0HfS04RDW8A/exec";
+const API_ENDPOINT = "/*************************************************
+ * 智能打卡系統 - Google Apps Script 後端 (優化修復版)
+ *************************************************/
+const SHEET_ID = '126Xq1wE_uconm0iF690-OQ5P9GFvNxLf3IVxLCxrW7o';
+const SHEET_NAME = 'line打卡-1';
+const EMPLOYEE_SHEET_NAME = '員工資料'; 
+const COMPANY_IPS = ["220.134.112.245", "114.34.60.48"];
+const CACHE_EXPIRATION = 300; // 員工資料快取秒數 (5 分鐘)
+const LOCK_TIMEOUT = 3000;    // Lock 最長等待時間
+
+/*************************************************
+ * 基本工具
+ *************************************************/
+function getSpreadsheet() {
+  return SpreadsheetApp.openById(SHEET_ID);
+}
+
+function jsonOutput(data) {
+  return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function isCompanyIP(ip) {
+  return COMPANY_IPS.includes(String(ip || "").trim());
+}
+
+function normalizeDate(dateValue) {
+  if (!dateValue) return "";
+  if (dateValue instanceof Date) {
+    return Utilities.formatDate(dateValue, Session.getScriptTimeZone(), "yyyy/MM/dd");
+  }
+  return String(dateValue).trim().split(" ")[0].replace(/-/g, "/");
+}
+
+function fixTime(t) {
+  if (!t) {
+    return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "HH:mm:ss");
+  }
+  if (t instanceof Date) {
+    return Utilities.formatDate(t, Session.getScriptTimeZone(), "HH:mm:ss");
+  }
+  let value = String(t).trim();
+  if (/^\d{1,2}:\d{2}$/.test(value)) {
+    value += ":00";
+  }
+  return value;
+}
+
+/*************************************************
+ * 員工資料 (優化快取與物件查詢)
+ *************************************************/
+function getEmployeeInfo(userId) {
+  const targetId = String(userId || "").trim();
+  if (!targetId) return { allowed: false, clockType: "一般" };
+
+  const cache = CacheService.getScriptCache();
+  const cacheKey = "emp_data_map_v3";
+  let cacheText = cache.get(cacheKey);
+  let empMap = {};
+
+  try {
+    if (cacheText) {
+      empMap = JSON.parse(cacheText);
+    } else {
+      const ss = getSpreadsheet();
+      const sheet = ss.getSheetByName(EMPLOYEE_SHEET_NAME);
+      if (!sheet) return { allowed: false, clockType: "一般" };
+
+      const lastRow = sheet.getLastRow();
+      const lastColumn = sheet.getLastColumn();
+      if (lastRow < 2 || lastColumn < 1) return { allowed: false, clockType: "一般" };
+
+      const data = sheet.getRange(1, 1, lastRow, lastColumn).getValues();
+      const headers = data[0].map(h => String(h).trim());
+      const idColIndex = headers.indexOf("LINE ID");
+      const allowColIndex = headers.indexOf("異地特許");
+      let typeColIndex = headers.indexOf("打卡別");
+      if (typeColIndex === -1) typeColIndex = 36;
+      if (idColIndex === -1) return { allowed: false, clockType: "一般" };
+
+      for (let i = 1; i < data.length; i++) {
+        const lineId = String(data[i][idColIndex] || "").trim();
+        if (!lineId) continue;
+
+        const allowed = allowColIndex !== -1 && String(data[i][allowColIndex] || "").trim() === "是";
+        let clockType = "一般";
+        if (typeColIndex < data[i].length && data[i][typeColIndex] !== undefined) {
+          const value = String(data[i][typeColIndex] || "").trim();
+          if (value === "多段" || value === "多段班") clockType = "多段";
+        }
+        empMap[lineId] = { allowed, clockType };
+      }
+      cache.put(cacheKey, JSON.stringify(empMap), CACHE_EXPIRATION);
+    }
+    return empMap[targetId] || { allowed: false, clockType: "一般" };
+  } catch (error) {
+    console.error("getEmployeeInfo error:", error);
+    return { allowed: false, clockType: "一般" };
+  }
+}
+
+/*************************************************
+ * 建立寫入資料
+ *************************************************/
+function createRowData(userId, userName, date, time, status, ip, lat, lng, key, isMakeup) {
+  return [
+    userId || "", userName || "", date || "", time || "", status || "",
+    "IP驗證", ip || "", lat || "", lng || "", "禮榮貿易", 0,
+    isMakeup ? "補打卡-待審核" : "有效打卡區", key || "",
+    "", "", "", "", "", "", "", "", ""
+  ];
+}
+
+/*************************************************
+ * 取得今日紀錄 (已修正：完整讀取有效資料行，避免漏掉紀錄)
+ *************************************************/
+function getRecordsByDate(userId, dateStr) {
+  const targetId = String(userId || "").trim();
+  const targetDate = normalizeDate(dateStr);
+  if (!targetId || !targetDate) return [];
+
+  const sheet = getSpreadsheet().getSheetByName(SHEET_NAME);
+  if (!sheet) return [];
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  // 直接讀取從第 2 行到最後一行的所有打卡紀錄
+  const values = sheet.getRange(2, 1, lastRow - 1, 14).getValues();
+
+  const results = [];
+  for (let i = 0; i < values.length; i++) {
+    const row = values[i];
+    if (String(row[0] || "").trim() === targetId && normalizeDate(row[2]) === targetDate) {
+      results.push({
+        status: String(row[4] || "").trim(),
+        time: fixTime(row[3]),
+        ip: String(row[6] || "").trim(),
+        isMakeup: String(row[11] || "").includes("補打卡") || String(row[13] || "").includes("補打卡")
+      });
+    }
+  }
+  return results;
+}
+
+/*************************************************
+ * POST - 打卡 (含強效防重複打上班卡機制)
+ *************************************************/
+function doPost(e) {
+  let lock = null;
+  try {
+    if (!e || !e.postData || !e.postData.contents) {
+      return jsonOutput({ success: false, message: "無效請求", date: "", time: "" });
+    }
+
+    let data;
+    try {
+      data = JSON.parse(e.postData.contents);
+    } catch (parseError) {
+      return jsonOutput({ success: false, message: "資料格式錯誤", date: "", time: "" });
+    }
+
+    const userId = String(data.userId || "").trim();
+    const userName = String(data.displayName || "使用者").trim();
+    const status = String(data.status || "").trim();
+    const ip = String(data.ip || "").trim();
+    const lat = data.lat !== undefined ? data.lat : "";
+    const lng = data.lng !== undefined ? data.lng : "";
+    const isMakeup = data.isMakeup === true || data.isMakeup === "true";
+    const customDate = String(data.customDate || "").trim();
+    const customTime = fixTime(data.customTime);
+
+    if (!userId) {
+      return jsonOutput({ success: false, message: "無法取得 LINE 使用者 ID", date: "", time: "" });
+    }
+    if (status !== "上班" && status !== "下班") {
+      return jsonOutput({ success: false, message: "無效的打卡狀態", date: "", time: "" });
+    }
+
+    const now = new Date();
+    const tz = Session.getScriptTimeZone();
+    const date = isMakeup && customDate ? normalizeDate(customDate) : Utilities.formatDate(now, tz, "yyyy/MM/dd");
+    const time = isMakeup && data.customTime ? customTime : Utilities.formatDate(now, tz, "HH:mm:ss");
+
+    const empInfo = getEmployeeInfo(userId);
+
+    if (!isMakeup && !isCompanyIP(ip) && !empInfo.allowed) {
+      return jsonOutput({ success: false, message: "非公司網路，不允許打卡", date, time });
+    }
+
+    const ss = getSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET_NAME);
+    if (!sheet) {
+      return jsonOutput({ success: false, message: "找不到打卡資料工作表", date, time });
+    }
+
+    lock = LockService.getScriptLock();
+    try {
+      lock.waitLock(LOCK_TIMEOUT);
+    } catch (lockError) {
+      return jsonOutput({ success: false, message: "目前打卡人數較多，請稍後再試", date, time });
+    }
+
+    if (isMakeup) {
+      const key = `${userId}_${date}_${status}_${time}_MAKEUP`;
+      sheet.appendRow(createRowData(userId, userName, date, time, status, ip, lat, lng, key, true));
+      return jsonOutput({ success: true, message: "補打卡成功", date, time });
+    }
+
+    // 讀取當日紀錄（修正對應行號與範圍）
+    const lastRow = sheet.getLastRow();
+    let todayRecords = [];
+    if (lastRow >= 2) {
+      const values = sheet.getRange(2, 1, lastRow - 1, 14).getValues();
+
+      for (let i = 0; i < values.length; i++) {
+        const row = values[i];
+        if (String(row[0] || "").trim() !== userId) continue;
+        if (normalizeDate(row[2]) !== date) continue;
+
+        todayRecords.push({
+          row: i + 2, // 試算表實際行號
+          status: String(row[4] || "").trim(),
+          time: fixTime(row[3]),
+          statusType: String(row[11] || "").trim()
+        });
+      }
+    }
+
+    const isMultiShift = empInfo.clockType === "多段";
+    const validRecords = todayRecords.filter(r => r.statusType === "有效打卡區");
+    const lastRecord = validRecords.length > 0 ? validRecords[validRecords.length - 1] : null;
+
+    // 嚴格防呆檢查：防止重複打上班卡
+    if (lastRecord) {
+      if (status === "上班" && lastRecord.status === "上班") {
+        return jsonOutput({ success: false, message: "打卡失敗：您已經打過上班卡了，請勿重複打上班卡！", date, time });
+      }
+      if (status === "下班" && lastRecord.status === "下班" && !isMultiShift) {
+        return jsonOutput({ success: false, message: "打卡失敗：您已經打過下班卡了！", date, time });
+      }
+    }
+
+    // 一般班別邏輯
+    if (!isMultiShift) {
+      if (status === "上班") {
+        const hasStart = validRecords.some(r => r.status === "上班");
+        if (hasStart) {
+          return jsonOutput({ success: false, message: "打卡完成，非多段班別請勿重複打卡", date, time });
+        }
+      }
+      if (status === "下班") {
+        const startRecords = validRecords.filter(r => r.status === "上班");
+        if (startRecords.length > 0) {
+          const target = startRecords[startRecords.length - 1];
+          sheet.getRange(target.row, 4, 1, 7).setValues([[time, "下班", "IP驗證", ip, lat || "", lng || "", "禮榮貿易"]]);
+          return jsonOutput({ success: true, message: "下班卡更新成功", date, time });
+        } else {
+          return jsonOutput({ success: false, message: "打卡失敗：找不到對應的上班紀錄，無法打下班卡", date, time });
+        }
+      }
+    }
+
+    // 多段班別邏輯
+    if (isMultiShift) {
+      const sameStatusCount = validRecords.filter(r => r.status === status).length;
+      if (sameStatusCount >= 3) {
+        return jsonOutput({ success: false, message: `已達 ${status} 打卡上限 (3次)`, date, time });
+      }
+
+      if (lastRecord && lastRecord.status === status) {
+        if (status === "上班") {
+          return jsonOutput({ success: false, message: "打卡錯誤：請先補登「下班卡」後再進行「上班打卡」。", date, time });
+        } else {
+          return jsonOutput({ success: false, message: "打卡錯誤：請先補登「上班卡」後再進行「下班打卡」。", date, time });
+        }
+      }
+    }
+
+    // 正常寫入新的一行
+    const key = `${userId}_${date}_${status}_${time}`;
+    sheet.appendRow(createRowData(userId, userName, date, time, status, ip, lat, lng, key, false));
+    return jsonOutput({ success: true, message: "打卡成功", date, time });
+
+  } catch (error) {
+    console.error("doPost error:", error);
+    return jsonOutput({ success: false, message: "系統發生錯誤：" + String(error.message || error), date: "", time: "" });
+  } finally {
+    if (lock) {
+      try { lock.releaseLock(); } catch (e) {}
+    }
+  }
+}
+
+/*************************************************
+ * GET
+ *************************************************/
+function doGet(e) {
+  try {
+    const params = e && e.parameter ? e.parameter : {};
+    const userId = String(params.userId || "").trim();
+    const action = params.action || "getToday";
+    const queryDate = params.date || "";
+
+    if (!userId) {
+      return jsonOutput({ success: false, message: "缺少 userId", data: [] });
+    }
+
+    if (action === "checkRemote") {
+      const empInfo = getEmployeeInfo(userId);
+      return jsonOutput({ success: true, allowed: empInfo.allowed, clockType: empInfo.clockType });
+    }
+
+    if (action === "getDate" && queryDate) {
+      return jsonOutput({ success: true, data: getRecordsByDate(userId, queryDate) });
+    }
+
+    const todayStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy/MM/dd");
+    return jsonOutput({ success: true, data: getRecordsByDate(userId, todayStr) });
+
+  } catch (error) {
+    console.error("doGet error:", error);
+    return jsonOutput({ success: false, message: "讀取資料失敗", data: [] });
+  }
+}";
 const COMPANY_IPS = ["220.134.112.245", "114.34.60.48"];
 const MANAGERS = ["U76174e2a9654ab2c7b1f037b28cb6c86", "U7fdf4fbd467b9a93a23fac01ed03351b"];
 
