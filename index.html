@@ -279,26 +279,6 @@ button:not(:disabled):active { transform: scale(0.97); }
     padding: 10px 24px !important;
     box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3) !important;
 }
-.clock-loading-spinner {
-    width: 52px;
-    height: 52px;
-    margin: 0 auto 18px;
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #3498db;
-    border-radius: 50%;
-    animation: clockSpin 0.8s linear infinite;
-}
-@keyframes clockSpin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-@media (max-width: 360px) {
-    #timeHour, #timeMin, #timeSec { font-size: 30px; }
-    .time-box { padding: 7px 9px; }
-    .clock-container { padding: 12px 12px; gap: 5px; }
-    #statusInfo { font-size: 12px; padding: 6px 10px; }
-    #userInfo { max-width: 170px; }
-}
 </style>
 </head>
 <body>
@@ -332,9 +312,10 @@ button:not(:disabled):active { transform: scale(0.97); }
     </div>
     <button id="btnApprove">查看 | 簽核</button>
 </div>
+
 <script>
 /*************************************************
- * 智能打卡系統 - 前端 V4 (精簡優化版)
+ * 智能打卡系統 - 前端 V4 (修正版)
  *************************************************/
 
 const API_ENDPOINT = "https://script.google.com/macros/s/AKfycby4KplnOogLpcs2v95G4AcLZg6kE9NVFB4VS5N3s62yI69w5X9HHrYZXTHP3dmiWHVz9w/exec";
@@ -344,14 +325,17 @@ const LIFF_ID = "2008520938-4018BD8v";
 
 const userInfo = document.getElementById("userInfo");
 const statusInfo = document.getElementById("statusInfo");
-const dateTime = document.getElementById("dateTime");
+const headerDate = document.getElementById("headerDate");
+const userAvatar = document.getElementById("userAvatar");
 const btnStart = document.getElementById("btnStart");
 const btnEnd = document.getElementById("btnEnd");
 const todayRecords = document.getElementById("todayRecords");
 const btnApprove = document.getElementById("btnApprove");
-const loadingWrapper = document.getElementById("countdownWrapper");
-const loadingCircle = document.getElementById("circleProgress");
-const loadingText = document.getElementById("countdownText");
+
+// 時鐘數字顯示元素
+const timeHour = document.getElementById("timeHour");
+const timeMin = document.getElementById("timeMin");
+const timeSec = document.getElementById("timeSec");
 
 window.userId = "";
 window.userName = "";
@@ -360,8 +344,6 @@ window.userReady = false;
 window.isSubmitting = false;
 window.currentIP = "";
 window.currentRequestId = "";
-window.lastClockStatus = "";
-window.lastClockTime = "";
 window.statusUpdating = false;
 window.todayRecordsPromise = null;
 window.recordsRequestVersion = 0;
@@ -375,11 +357,19 @@ const RECORD_FETCH_TIMEOUT = 12000;
 const RECORD_MAX_RETRY = 3;
 const REMOTE_STATUS_TTL = 60 * 1000;
 
-function updateDateTime() {
-  dateTime.textContent = new Date().toLocaleString("zh-TW", { hour12: false });
+function updateClockAndDate() {
+  const now = new Date();
+  if (headerDate) {
+    headerDate.textContent = now.toLocaleDateString("zh-TW", { year: 'numeric', month: '2-digit', day: '2-digit' });
+  }
+  if (timeHour && timeMin && timeSec) {
+    timeHour.textContent = String(now.getHours()).padStart(2, "0");
+    timeMin.textContent = String(now.getMinutes()).padStart(2, "0");
+    timeSec.textContent = String(now.getSeconds()).padStart(2, "0");
+  }
 }
-updateDateTime();
-setInterval(updateDateTime, 1000);
+updateClockAndDate();
+setInterval(updateClockAndDate, 1000);
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -435,10 +425,14 @@ async function preloadIP() {
 function loadUserFromCache() {
   const cachedUserId = localStorage.getItem("cached_userId");
   const cachedUserName = localStorage.getItem("cached_userName");
+  const cachedPictureUrl = localStorage.getItem("cached_pictureUrl");
   if (cachedUserId) {
     window.userId = cachedUserId;
     window.userName = cachedUserName || "使用者";
-    userInfo.textContent = `${window.userName} 您好`;
+    if (userInfo) userInfo.textContent = `${window.userName} 您好`;
+    if (cachedPictureUrl && userAvatar) {
+      userAvatar.innerHTML = `<img src="${escapeHtml(cachedPictureUrl)}" alt="avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+    }
   }
 }
 
@@ -524,18 +518,20 @@ async function initUser() {
     const profile = await liff.getProfile();
     window.userId = String(profile.userId || "").trim();
     window.userName = profile.displayName || "使用者";
-    userInfo.textContent = `${window.userName} 您好`;
+    if (userInfo) userInfo.textContent = `${window.userName} 您好`;
 
-    if (profile.pictureUrl) {
-        userAvatar.innerHTML = `<img src="${escapeHtml(profile.pictureUrl)}" alt="avatar" style="width:100%;height:100%;object-fit:cover;">`;
+    if (profile.pictureUrl && userAvatar) {
+        userAvatar.innerHTML = `<img src="${escapeHtml(profile.pictureUrl)}" alt="avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
         localStorage.setItem("cached_pictureUrl", profile.pictureUrl);
-    } else {
+    } else if (userAvatar) {
         userAvatar.textContent = window.userName.charAt(0) || "👤";
     }
 
     localStorage.setItem("cached_userId", window.userId);
     localStorage.setItem("cached_userName", window.userName);
-    btnApprove.style.display = MANAGERS.includes(window.userId) ? "block" : "none";
+    if (btnApprove) {
+      btnApprove.style.display = MANAGERS.includes(window.userId) ? "block" : "none";
+    }
     return true;
 }
 
@@ -728,31 +724,6 @@ function getGeoLocation() {
   });
 }
 
-function startLoading(status) {
-  loadingWrapper.style.display = "flex";
-  loadingWrapper.style.opacity = "1";
-  loadingText.textContent = status === "上班" ? "上班打卡中..." : "下班打卡中...";
-  const radius = 50;
-  const circumference = 2 * Math.PI * radius;
-  loadingCircle.style.strokeDasharray = circumference;
-  loadingCircle.style.strokeDashoffset = circumference;
-  loadingCircle.style.stroke = status === "下班" ? "#2ecc71" : "#3498db";
-  return { circumference };
-}
-
-function updateLoading(progress, circumference) {
-  const safeProgress = Math.max(0, Math.min(1, progress));
-  loadingCircle.style.strokeDashoffset = circumference * (1 - safeProgress);
-}
-
-function stopLoading() {
-  loadingWrapper.style.opacity = "0";
-  setTimeout(() => {
-    loadingWrapper.style.display = "none";
-    loadingWrapper.style.opacity = "1";
-  }, 180);
-}
-
 async function confirmClockRecord(requestId, status, maxWaitMs = 12000) {
   const startedAt = Date.now();
   const delays = [800, 1800, 3500];
@@ -830,12 +801,6 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
   const requestId = window.currentRequestId;
 
   setButtonsLock(true, "打卡中...", "打卡中...");
-  const loading = startLoading(status);
-  let loadingProgress = 0;
-  const loadingTimer = setInterval(() => {
-    loadingProgress = Math.min(loadingProgress + 0.025, 0.9);
-    updateLoading(loadingProgress, loading.circumference);
-  }, 100);
 
   try {
     const ip = await preloadIP();
@@ -860,7 +825,6 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
       }, 20000);
     } catch (postError) {
       if (postError.code === "REQUEST_TIMEOUT" || postError.message === "Failed to fetch" || postError.name === "TypeError") {
-        loadingText.textContent = "正在確認打卡結果...";
         const confirmed = await confirmClockRecord(requestId, status, 12000);
         if (confirmed.success) {
           apiData = { success: true, date: confirmed.date, time: confirmed.time, message: "打卡成功", requestId };
@@ -874,9 +838,6 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
 
     if (!apiData || apiData.success !== true) throw new Error(apiData?.message || "打卡失敗，請稍後再試");
 
-    updateLoading(1, loading.circumference);
-    clearInterval(loadingTimer);
-    stopLoading();
     showClockResult(apiData, status, isMakeup);
 
     sendSelfMessage({
@@ -889,17 +850,15 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
     }, 800);
 
   } catch (error) {
-    clearInterval(loadingTimer);
-    stopLoading();
     Swal.fire({
       icon: "error", title: "打卡失敗",
       html: `<div style="color:#c0392b;font-weight:bold;line-height:1.7;">${escapeHtml(error.message || "網路連線異常")}</div>`,
       confirmButtonText: "確定", customClass: { popup: "custom-swal-popup" }
     });
   } finally {
-    clearInterval(loadingTimer);
     window.isSubmitting = false;
     updateStatus().catch(() => {});
+    setButtonsLock(false, "上班", "下班");
   }
 }
 
