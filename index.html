@@ -712,7 +712,7 @@ function fixTimeFormat(value) {
 }
 
 /* =================================================
- * 打卡 Loading
+ * 打卡 Loading (轉圈圈)
  * ================================================= */
 
 function showClockLoading(titleText, subText = "正在確認打卡資料，請稍候...") {
@@ -963,7 +963,7 @@ async function showClockResult(apiData, status, isMakeup) {
 }
 
 /* =================================================
- * 核心打卡函式
+ * 核心打卡函式 (已整合轉圈圈)
  * ================================================= */
 
 async function performClockIn(status, customDate = "", customTime = "", isMakeup = false) {
@@ -996,9 +996,11 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
   const requestId = window.currentRequestId;
 
   setButtonsLock(true, "處理中...", "處理中...");
+  
+  // 1. 這裡呼叫轉圈圈畫面
   showClockLoading(
-    isMakeup ? "補打卡中" : (status === "上班" ? "上班打卡中" : "下班打卡中"),
-    "正在送出打卡資料..."
+      isMakeup ? "補打卡中" : (status === "上班" ? "上班打卡中" : "下班打卡中"),
+      "正在確認打卡資料，請稍候..."
   );
 
   try {
@@ -1039,7 +1041,7 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         postError.message === "Failed to fetch" ||
         postError.name === "TypeError"
       ) {
-        Swal.close();
+        Swal.close(); // 關閉轉圈圈
         await Swal.fire({
           icon: "info",
           title: "打卡請求已送出",
@@ -1074,6 +1076,8 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
     };
 
     optimisticAddRecord(localRecord);
+    
+    // 2. 伺服器成功回應後關閉轉圈圈，並顯示成功畫面
     Swal.close();
     await showClockResult(apiData, status, isMakeup);
 
@@ -1088,6 +1092,8 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
     backgroundRefreshRecords(1200);
   } catch (error) {
     console.error("performClockIn error:", error);
+    
+    // 3. 發生錯誤時也必須關閉轉圈圈
     Swal.close();
     await Swal.fire({
       icon: "error",
@@ -1181,6 +1187,7 @@ setInterval(() => {
     updateTodayRecords({ silent: true, timeoutMs: 7000 }).catch(() => {});
   }
 }, 60000);
+
 </script>
 </body>
 </html>
