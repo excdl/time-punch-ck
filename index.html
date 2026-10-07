@@ -1219,69 +1219,47 @@ if (btnApprove) {
  * ================================================= */
 
 window.addEventListener("load", async () => {
-    try {
-        if (statusInfo) {
-            statusInfo.textContent = "檢查中...";
-            statusInfo.style.background = "#95a5a6";
-        }
+  try {
+    // 1. 一開始先顯示初始化狀態，鎖住按鈕，避免提早判定為無效打卡區
+    statusInfo.textContent = "系統初始化中...";
+    statusInfo.style.background = "#95a5a6";
+    setButtonsLock(true, "同步中...", "同步中...");
 
-        setButtonsLock(true, "同步中...", "同步中...");
+    // 2. 優先載入快取與預先抓取 IP
+    loadUserFromCache();
+    preloadIP().catch(() => {});
 
-        loadUserFromCache();
+    // 3. 執行 LIFF 初始化與取得使用者 Profile
+    const userResult = await initUser();
+    if (!userResult) return;
 
-        preloadIP().catch(() => {});
-
-        let initResult;
-
-        try {
-            initResult = await initUser();
-        } catch (error) {
-            console.error("LINE 初始化失敗:", error);
-            if (!window.userId) {
-                throw error;
-            }
-        }
-
-        if (initResult === false && !window.userId) {
-            return;
-        }
-
-        if (!window.userId) {
-            if (statusInfo) {
-                statusInfo.textContent = "請完成 LINE 登入";
-                statusInfo.style.background = "#95a5a6";
-            }
-            setButtonsLock(true, "上班", "下班");
-            return;
-        }
-
-        updateStatus().catch(error => {
-            console.warn("初始化狀態同步失敗:", error);
-        });
-
-        updateTodayRecords({
-            force: true,
-            timeout: 5000
-        }).catch(error => {
-            console.warn("初始化今日紀錄同步失敗:", error);
-        });
-    } catch (error) {
-        console.error("初始化失敗:", error);
-
-        if (window.userId) {
-            if (statusInfo) {
-                statusInfo.textContent = "網路同步較慢";
-                statusInfo.style.background = "#f39c12";
-            }
-            setButtonsLock(false, "上班", "下班");
-        } else {
-            if (statusInfo) {
-                statusInfo.textContent = "初始化失敗，請重新整理";
-                statusInfo.style.background = "#e74c3c";
-            }
-            setButtonsLock(true, "重新整理", "重新整理");
-        }
+    if (!window.userId) {
+      statusInfo.textContent = "請完成 LINE 登入";
+      statusInfo.style.background = "#95a5a6";
+      setButtonsLock(true, "上班", "下班");
+      return;
     }
+
+    window.initialized = true;
+
+    // 4. 【關鍵修改】確保 userId 已經存在後，才正式向後台查詢「異地特許」等權限
+    await updateStatus();
+    updateTodayRecords(true).catch(() => {});
+
+  } catch (error) {
+    console.error("初始化失敗:", error);
+    if (window.userId) {
+      statusInfo.textContent = "網路較慢，正在使用暫存資料";
+      statusInfo.style.background = "#f39c12";
+      setTimeout(() => {
+        updateStatus().catch(() => {});
+      }, 1000);
+    } else {
+      statusInfo.textContent = "初始化失敗，請重新整理";
+      statusInfo.style.background = "#e74c3c";
+      setButtonsLock(true, "重新整理", "重新整理");
+    }
+  }
 });
 
 /* =================================================
