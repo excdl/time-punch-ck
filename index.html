@@ -318,7 +318,7 @@ button:not(:disabled):active { transform: scale(0.97); }
  * 系統設定
  * ================================================= */
 
-const API_ENDPOINT = "https://script.google.com/macros/s/AKfycbx3Rgi3ReKI5fqm8Kf7CPQEwBk2S8qjj5a3A3VOQTLHM5k17dKRlguUDrQH0Vj7jG-V1A/exec";
+const API_ENDPOINT = "https://script.google.com/macros/s/AKfycbxmFPBg0KCL76CGbHfVVZG45zsppBaBbeMIyD8X99KsDFg3ekxtHBC9vKnbZ5P4uRHq3Q/exec";
 const COMPANY_IPS = ["220.134.112.245", "114.34.60.48"];
 const MANAGERS = ["U76174e2a9654ab2c7b1f037b28cb6c86", "U7fdf4fbd467b9a93a23fac01ed03351b"];
 const LIFF_ID = "2008520938-4018BD8v";
@@ -716,20 +716,20 @@ function fixTimeFormat(value) {
  * ================================================= */
 
 function showClockLoading(titleText, subText = "正在確認打卡資料，請稍候...") {
-  Swal.fire({
-    html: `
-      <div style="padding:15px 0; text-align:center;">
-        <div class="clock-loading-spinner"></div>
-        <h3 style="margin:0 0 8px 0; color:#2c3e50; font-size:20px; font-weight:bold;">${escapeHtml(titleText)}</h3>
-        <p style="margin:0; color:#7f8c8d; font-size:14px;">${escapeHtml(subText)}</p>
-      </div>
-    `,
-    showConfirmButton: false,
-    allowOutsideClick: false,
-    allowEscapeKey: false,
-    backdrop: "rgba(0,0,0,0.5)",
-    customClass: { popup: "custom-swal-popup" }
-  });
+    Swal.fire({
+        html: `
+            <div style="padding:15px 0; text-align:center;">
+                <div class="clock-loading-spinner"></div>
+                <h3 style="margin:0 0 8px 0; color:#2c3e50; font-size:20px; font-weight:bold;">${escapeHtml(titleText)}</h3>
+                <p style="margin:0; color:#7f8c8d; font-size:14px;">${escapeHtml(subText)}</p>
+            </div>
+        `,
+        showConfirmButton: false,
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        backdrop: "rgba(0,0,0,0.5)",
+        customClass: { popup: "custom-swal-popup" }
+    });
 }
 
 /* =================================================
