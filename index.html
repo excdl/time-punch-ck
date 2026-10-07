@@ -314,13 +314,22 @@ button:not(:disabled):active { transform: scale(0.97); }
 </div>
 
 <script>
-/* =================================================
- * 系統設定
- * ================================================= */
+/*************************************************
+ * 智能打卡系統 - 前端優化版
+ *************************************************/
 
-const API_ENDPOINT = "https://script.google.com/macros/s/AKfycbxmFPBg0KCL76CGbHfVVZG45zsppBaBbeMIyD8X99KsDFg3ekxtHBC9vKnbZ5P4uRHq3Q/exec";
-const COMPANY_IPS = ["220.134.112.245", "114.34.60.48"];
-const MANAGERS = ["U76174e2a9654ab2c7b1f037b28cb6c86", "U7fdf4fbd467b9a93a23fac01ed03351b"];
+const API_ENDPOINT = "https://script.google.com/macros/s/AKfycby4Sv2rT9VI1D5IutGMdxI7OzQKkOH5XcMe4zr2dH2YT-5vtW751iyaEoAI89ISkPAaTw/exec";
+
+const COMPANY_IPS = [
+    "220.134.112.245",
+    "114.34.60.48"
+];
+
+const MANAGERS = [
+    "U76174e2a9654ab2c7b1f037b28cb6c86",
+    "U7fdf4fbd467b9a93a23fac01ed03351b"
+];
+
 const LIFF_ID = "2008520938-4018BD8v";
 
 /* =================================================
@@ -348,67 +357,71 @@ window.currentIP = "";
 window.currentRequestId = "";
 window.isSubmitting = false;
 window.statusUpdating = false;
-window.recordsLoading = false;
-window.recordsRefreshTimer = null;
-window.todayRecordsData = [];
-window.processedRequestIds = new Set();
+window.recordsUpdating = false;
+window.lastRecordSync = 0;
+window.lastStatusSync = 0;
+window.recordsSyncPromise = null;
+window.ipPromise = null;
+window.statusPromise = null;
 
 /* =================================================
- * HTML 安全
+ * 基本工具
  * ================================================= */
 
 function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 /* =================================================
- * 日期時間顯示
+ * 時間
  * ================================================= */
 
 function updateDateTime() {
-  const now = new Date();
-  const hours = String(now.getHours()).padStart(2, "0");
-  const minutes = String(now.getMinutes()).padStart(2, "0");
-  const seconds = String(now.getSeconds()).padStart(2, "0");
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+    const seconds = String(now.getSeconds()).padStart(2, "0");
 
-  const hourEl = document.getElementById("timeHour");
-  const minEl = document.getElementById("timeMin");
-  const secEl = document.getElementById("timeSec");
+    const hourEl = document.getElementById("timeHour");
+    const minEl = document.getElementById("timeMin");
+    const secEl = document.getElementById("timeSec");
 
-  if (hourEl) hourEl.textContent = hours;
-  if (minEl) minEl.textContent = minutes;
-  if (secEl) secEl.textContent = seconds;
+    if (hourEl) hourEl.textContent = hours;
+    if (minEl) minEl.textContent = minutes;
+    if (secEl) secEl.textContent = seconds;
 
-  if (headerDate) {
-    headerDate.textContent = now.toLocaleDateString("zh-TW", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      weekday: "short"
-    });
-  }
+    if (headerDate) {
+        headerDate.textContent = now.toLocaleDateString("zh-TW", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            weekday: "short"
+        });
+    }
 }
 
 updateDateTime();
 setInterval(updateDateTime, 1000);
 
 /* =================================================
- * 按鈕鎖定
+ * 按鈕控制
  * ================================================= */
 
 function setButtonsLock(locked, startText = "上班", endText = "下班") {
-  if (!btnStart || !btnEnd) return;
+    if (!btnStart || !btnEnd) return;
 
-  btnStart.disabled = locked || window.isSubmitting;
-  btnEnd.disabled = locked || window.isSubmitting;
-  btnStart.textContent = startText;
-  btnEnd.textContent = endText;
-  window.userReady = !locked && !!window.userId;
+    const finalLocked = locked || window.isSubmitting || !window.userId;
+
+    btnStart.disabled = finalLocked;
+    btnEnd.disabled = finalLocked;
+    btnStart.textContent = startText;
+    btnEnd.textContent = endText;
+    window.userReady = !finalLocked && !!window.userId;
 }
 
 /* =================================================
@@ -416,47 +429,52 @@ function setButtonsLock(locked, startText = "上班", endText = "下班") {
  * ================================================= */
 
 function createRequestId() {
-  return "CLK_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
+    return "CLK_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
 }
 
 /* =================================================
- * 通用 Fetch
+ * fetch JSON
  * ================================================= */
 
-async function fetchJson(url, options = {}, timeoutMs = 10000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-      cache: "no-store"
-    });
-    const text = await response.text();
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    if (!text) {
-      throw new Error("伺服器沒有回傳資料");
-    }
+async function fetchJson(url, options = {}, timeoutMs = 8000) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+        controller.abort();
+    }, timeoutMs);
 
     try {
-      return JSON.parse(text);
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal,
+            cache: "no-store"
+        });
+
+        const text = await response.text();
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        if (!text) {
+            throw new Error("伺服器沒有回傳資料");
+        }
+
+        try {
+            return JSON.parse(text);
+        } catch (parseError) {
+            console.warn("JSON 解析失敗，原始回應：", text);
+            throw new Error("伺服器回傳格式錯誤");
+        }
     } catch (error) {
-      throw new Error("伺服器回傳格式錯誤");
+        if (error && error.name === "AbortError") {
+            const timeoutError = new Error("REQUEST_TIMEOUT");
+            timeoutError.code = "REQUEST_TIMEOUT";
+            throw timeoutError;
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeout);
     }
-  } catch (error) {
-    if (error.name === "AbortError") {
-      const timeoutError = new Error("REQUEST_TIMEOUT");
-      timeoutError.code = "REQUEST_TIMEOUT";
-      throw timeoutError;
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 /* =================================================
@@ -464,181 +482,194 @@ async function fetchJson(url, options = {}, timeoutMs = 10000) {
  * ================================================= */
 
 function isCompanyIP(ip) {
-  return COMPANY_IPS.includes(String(ip || "").trim());
+    return COMPANY_IPS.includes(String(ip || "").trim());
 }
 
 /* =================================================
- * IP 取得
+ * 取得目前 IP
  * ================================================= */
 
-let ipPromise = null;
-
 async function preloadIP(forceRefresh = false) {
-  if (window.currentIP && !forceRefresh) return window.currentIP;
-
-  const cached = sessionStorage.getItem("myIP");
-  if (cached && !forceRefresh) {
-    window.currentIP = cached;
-    return cached;
-  }
-  if (ipPromise && !forceRefresh) return ipPromise;
-
-  ipPromise = (async () => {
-    try {
-      const result = await fetchJson("https://api.ipify.org?format=json", {}, 3000);
-      const ip = String(result.ip || "").trim();
-      if (ip) {
-        window.currentIP = ip;
-        sessionStorage.setItem("myIP", ip);
-      }
-      return ip;
-    } catch (error) {
-      return window.currentIP || cached || "";
-    } finally {
-      ipPromise = null;
+    if (window.currentIP && !forceRefresh) {
+        return window.currentIP;
     }
-  })();
 
-  return ipPromise;
+    const cached = sessionStorage.getItem("myIP");
+    if (cached && !forceRefresh) {
+        window.currentIP = cached;
+        return cached;
+    }
+
+    if (window.ipPromise && !forceRefresh) {
+        return window.ipPromise;
+    }
+
+    window.ipPromise = (async () => {
+        try {
+            const response = await fetchJson("https://api.ipify.org?format=json", {}, 3000);
+            const ip = String(response.ip || "").trim();
+            if (ip) {
+                window.currentIP = ip;
+                sessionStorage.setItem("myIP", ip);
+            }
+            return ip;
+        } catch (error) {
+            console.warn("IP 取得失敗:", error);
+            return window.currentIP || cached || "";
+        } finally {
+            window.ipPromise = null;
+        }
+    })();
+
+    return window.ipPromise;
 }
 
 /* =================================================
- * 本機快取使用者
+ * 快取使用者
  * ================================================= */
 
 function loadUserFromCache() {
-  const cachedUserId = localStorage.getItem("cached_userId");
-  const cachedUserName = localStorage.getItem("cached_userName");
-  const cachedPictureUrl = localStorage.getItem("cached_pictureUrl");
-
-  if (cachedUserId) {
-    window.userId = cachedUserId;
-    window.userName = cachedUserName || "使用者";
-
-    if (userInfo) {
-      userInfo.textContent = `${window.userName} 您好`;
-    }
-
-    if (cachedPictureUrl && userAvatar) {
-      userAvatar.innerHTML = `<img src="${escapeHtml(cachedPictureUrl)}" alt="avatar" style="width:100%;height:100%;object-fit:cover;">`;
-    } else if (userAvatar) {
-      userAvatar.textContent = window.userName.charAt(0) || "👤";
-    }
-
-    if (MANAGERS.includes(window.userId) && btnApprove) {
-      btnApprove.style.display = "block";
-    }
-  }
-
-  const cachedRecords = sessionStorage.getItem("cached_today_records");
-  if (cachedRecords) {
     try {
-      const records = JSON.parse(cachedRecords);
-      if (Array.isArray(records)) {
-        window.todayRecordsData = records;
-        renderRecords(records);
-      }
+        const cachedUserId = localStorage.getItem("cached_userId");
+        const cachedUserName = localStorage.getItem("cached_userName");
+        const cachedPictureUrl = localStorage.getItem("cached_pictureUrl");
+
+        if (cachedUserId) {
+            window.userId = cachedUserId;
+            window.userName = cachedUserName || "使用者";
+
+            if (userInfo) {
+                userInfo.textContent = `${window.userName} 您好`;
+            }
+
+            if (userAvatar && cachedPictureUrl) {
+                userAvatar.innerHTML = `<img src="${escapeHtml(cachedPictureUrl)}" alt="avatar" style="width:100%;height:100%;object-fit:cover;">`;
+            } else if (userAvatar) {
+                userAvatar.textContent = window.userName.charAt(0) || "👤";
+            }
+
+            if (btnApprove && MANAGERS.includes(window.userId)) {
+                btnApprove.style.display = "block";
+            }
+        }
+
+        const cachedRecords = sessionStorage.getItem("cached_today_records");
+        if (cachedRecords) {
+            try {
+                const records = JSON.parse(cachedRecords);
+                if (Array.isArray(records)) {
+                    renderRecords(records);
+                }
+            } catch (error) {
+                console.warn("快取紀錄解析失敗", error);
+            }
+        }
     } catch (error) {
-      console.warn("今日紀錄快取解析失敗", error);
+        console.warn("載入使用者快取失敗", error);
     }
-  }
 }
 
 /* =================================================
- * LIFF
+ * LINE 使用者
  * ================================================= */
 
 async function initUser() {
-  await liff.init({ liffId: LIFF_ID });
+    await liff.init({ liffId: LIFF_ID });
 
-  if (!liff.isLoggedIn()) {
-    liff.login();
-    return false;
-  }
+    if (!liff.isLoggedIn()) {
+        liff.login();
+        return false;
+    }
 
-  const profile = await liff.getProfile();
-  window.userId = String(profile.userId || "").trim();
-  window.userName = profile.displayName || "使用者";
+    const profile = await liff.getProfile();
+    window.userId = String(profile.userId || "").trim();
+    window.userName = profile.displayName || "使用者";
 
-  if (userInfo) {
-    userInfo.textContent = `${window.userName} 您好`;
-  }
+    if (userInfo) {
+        userInfo.textContent = `${window.userName} 您好`;
+    }
 
-  if (profile.pictureUrl && userAvatar) {
-    userAvatar.innerHTML = `<img src="${escapeHtml(profile.pictureUrl)}" alt="avatar" style="width:100%;height:100%;object-fit:cover;">`;
-    localStorage.setItem("cached_pictureUrl", profile.pictureUrl);
-  } else if (userAvatar) {
-    userAvatar.textContent = window.userName.charAt(0) || "👤";
-  }
+    if (profile.pictureUrl && userAvatar) {
+        userAvatar.innerHTML = `<img src="${escapeHtml(profile.pictureUrl)}" alt="avatar" style="width:100%;height:100%;object-fit:cover;">`;
+        localStorage.setItem("cached_pictureUrl", profile.pictureUrl);
+    } else if (userAvatar) {
+        userAvatar.textContent = window.userName.charAt(0) || "👤";
+    }
 
-  localStorage.setItem("cached_userId", window.userId);
-  localStorage.setItem("cached_userName", window.userName);
+    localStorage.setItem("cached_userId", window.userId);
+    localStorage.setItem("cached_userName", window.userName);
 
-  if (btnApprove) {
-    btnApprove.style.display = MANAGERS.includes(window.userId) ? "block" : "none";
-  }
+    if (btnApprove) {
+        btnApprove.style.display = MANAGERS.includes(window.userId) ? "block" : "none";
+    }
 
-  return true;
+    return true;
 }
 
 /* =================================================
- * 更新打卡區域
+ * 更新打卡狀態
  * ================================================= */
 
 async function updateStatus() {
-  if (window.statusUpdating) return;
-  window.statusUpdating = true;
+    if (!window.userId) return;
+    if (window.statusPromise) return window.statusPromise;
 
-  try {
-    const ip = await preloadIP();
+    window.statusPromise = (async () => {
+        try {
+            const ip = await preloadIP();
 
-    if (isCompanyIP(ip)) {
-      window.allowRemote = false;
-      if (statusInfo) {
-        statusInfo.textContent = "有效打卡區";
-        statusInfo.style.background = "#2ecc71";
-      }
-      setButtonsLock(false, "上班", "下班");
-      return;
-    }
+            if (isCompanyIP(ip)) {
+                window.allowRemote = false;
+                if (statusInfo) {
+                    statusInfo.textContent = "有效打卡區";
+                    statusInfo.style.background = "#2ecc71";
+                }
+                setButtonsLock(false, "上班", "下班");
+                return;
+            }
 
-    if (!window.userId) {
-      if (statusInfo) {
-        statusInfo.textContent = "等待 LINE 使用者資訊";
-        statusInfo.style.background = "#95a5a6";
-      }
-      setButtonsLock(true, "上班", "下班");
-      return;
-    }
+            if (!window.userId) {
+                if (statusInfo) {
+                    statusInfo.textContent = "等待 LINE 使用者資訊";
+                    statusInfo.style.background = "#95a5a6";
+                }
+                setButtonsLock(true, "上班", "下班");
+                return;
+            }
 
-    try {
-      const result = await fetchJson(
-        `${API_ENDPOINT}?action=checkRemote&userId=${encodeURIComponent(window.userId)}&_=${Date.now()}`,
-        {},
-        5000
-      );
-      window.allowRemote = result.allowed === true;
-    } catch (error) {
-      console.warn("異地權限檢查失敗:", error);
-      window.allowRemote = false;
-    }
+            try {
+                const result = await fetchJson(
+                    `${API_ENDPOINT}?action=checkRemote&userId=${encodeURIComponent(window.userId)}&_=${Date.now()}`,
+                    {},
+                    5000
+                );
+                window.allowRemote = result && result.allowed === true;
+            } catch (error) {
+                console.warn("異地資格查詢失敗:", error);
+                if (typeof window.allowRemote !== "boolean") {
+                    window.allowRemote = false;
+                }
+            }
 
-    if (window.allowRemote) {
-      if (statusInfo) {
-        statusInfo.textContent = "有效打卡區（異地）";
-        statusInfo.style.background = "#2ecc71";
-      }
-      setButtonsLock(false, "上班", "下班");
-    } else {
-      if (statusInfo) {
-        statusInfo.textContent = "無效打卡區";
-        statusInfo.style.background = "#e74c3c";
-      }
-      setButtonsLock(true, "上班", "下班");
-    }
-  } finally {
-    window.statusUpdating = false;
-  }
+            if (window.allowRemote) {
+                if (statusInfo) {
+                    statusInfo.textContent = "有效打卡區（異地）";
+                    statusInfo.style.background = "#2ecc71";
+                }
+                setButtonsLock(false, "上班", "下班");
+            } else {
+                if (statusInfo) {
+                    statusInfo.textContent = "無效打卡區";
+                    statusInfo.style.background = "#e74c3c";
+                }
+                setButtonsLock(true, "上班", "下班");
+            }
+        } finally {
+            window.statusPromise = null;
+        }
+    })();
+
+    return window.statusPromise;
 }
 
 /* =================================================
@@ -646,39 +677,45 @@ async function updateStatus() {
  * ================================================= */
 
 function getGeoLocation() {
-  return new Promise(resolve => {
-    if (!navigator.geolocation) {
-      resolve({ lat: "", lng: "" });
-      return;
-    }
+    return new Promise(resolve => {
+        if (!navigator.geolocation) {
+            resolve({ lat: "", lng: "" });
+            return;
+        }
 
-    navigator.geolocation.getCurrentPosition(
-      position => {
-        resolve({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        });
-      },
-      error => {
-        console.warn("GPS 取得失敗:", error);
-        resolve({ lat: "", lng: "" });
-      },
-      {
-        timeout: 6000,
-        enableHighAccuracy: true,
-        maximumAge: 30000
-      }
-    );
-  });
+        navigator.geolocation.getCurrentPosition(
+            position => {
+                resolve({
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                });
+            },
+            error => {
+                console.warn("GPS 取得失敗:", error);
+                resolve({ lat: "", lng: "" });
+            },
+            {
+                timeout: 5000,
+                enableHighAccuracy: true,
+                maximumAge: 30000
+            }
+        );
+    });
 }
 
 /* =================================================
- * 今日日期
+ * 日期
  * ================================================= */
 
 function getTodayString() {
-  const now = new Date();
-  return `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${String(now.getDate()).padStart(2, "0")}`;
+    const now = new Date();
+    return (
+        now.getFullYear() +
+        "/" +
+        String(now.getMonth() + 1).padStart(2, "0") +
+        "/" +
+        String(now.getDate()).padStart(2, "0")
+    );
 }
 
 /* =================================================
@@ -686,33 +723,37 @@ function getTodayString() {
  * ================================================= */
 
 function fixTimeFormat(value) {
-  if (value === null || value === undefined || value === "") {
-    return "00:00:00";
-  }
-  if (typeof value === "string" && value.includes(":") && !value.includes("T")) {
-    const parts = value.split(":");
-    while (parts.length < 3) {
-      parts.push("00");
+    if (value === null || value === undefined || value === "") {
+        return "00:00:00";
     }
-    return parts.slice(0, 3).map(v => String(v).padStart(2, "0")).join(":");
-  }
-  if (typeof value === "string" && value.includes("T")) {
-    const d = new Date(value);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleTimeString("zh-TW", { hour12: false });
+
+    if (typeof value === "string" && value.includes(":") && !value.includes("T")) {
+        const parts = value.split(":");
+        while (parts.length < 3) {
+            parts.push("00");
+        }
+        return parts.slice(0, 3).map(v => String(v).padStart(2, "0")).join(":");
     }
-  }
-  if (typeof value === "number") {
-    const d = new Date((value - 25569) * 86400 * 1000);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleTimeString("zh-TW", { hour12: false });
+
+    if (typeof value === "string" && value.includes("T")) {
+        const d = new Date(value);
+        if (!isNaN(d.getTime())) {
+            return d.toLocaleTimeString("zh-TW", { hour12: false });
+        }
     }
-  }
-  return String(value);
+
+    if (typeof value === "number") {
+        const d = new Date((value - 25569) * 86400 * 1000);
+        if (!isNaN(d.getTime())) {
+            return d.toLocaleTimeString("zh-TW", { hour12: false });
+        }
+    }
+
+    return String(value);
 }
 
 /* =================================================
- * 打卡 Loading (轉圈圈)
+ * Loading
  * ================================================= */
 
 function showClockLoading(titleText, subText = "正在確認打卡資料，請稍候...") {
@@ -733,459 +774,542 @@ function showClockLoading(titleText, subText = "正在確認打卡資料，請�
 }
 
 /* =================================================
- * Render 今日紀錄
+ * Loading 狀態更新
+ * ================================================= */
+
+function updateClockLoading(titleText, subText) {
+    try {
+        Swal.update({
+            html: `
+                <div style="padding:15px 0; text-align:center;">
+                    <div class="clock-loading-spinner"></div>
+                    <h3 style="margin:0 0 8px 0; color:#2c3e50; font-size:20px; font-weight:bold;">${escapeHtml(titleText)}</h3>
+                    <p style="margin:0; color:#7f8c8d; font-size:14px;">${escapeHtml(subText)}</p>
+                </div>
+            `
+        });
+    } catch (error) {
+        console.warn("更新 loading 失敗", error);
+    }
+}
+
+/* =================================================
+ * 顯示紀錄
  * ================================================= */
 
 function renderRecords(data) {
-  if (!Array.isArray(data)) data = [];
-  window.todayRecordsData = data;
+    if (!todayRecords) return;
 
-  if (!todayRecords) return;
+    if (!Array.isArray(data) || data.length === 0) {
+        todayRecords.innerHTML = `<div class="records-empty">今日尚無打卡紀錄</div>`;
+        return;
+    }
 
-  if (data.length === 0) {
-    todayRecords.innerHTML = `<div class="records-empty">今日尚無打卡紀錄</div>`;
-    return;
-  }
+    const sorted = [...data].sort((a, b) => {
+        const ta = String(a.time || "");
+        const tb = String(b.time || "");
+        return ta.localeCompare(tb);
+    });
 
-  todayRecords.innerHTML = data.map(record => {
-    const status = record.status === "下班" ? "下班" : "上班";
-    const color = status === "下班" ? "#2ecc71" : "#3498db";
-    const time = fixTimeFormat(record.time);
-    const isCompany = isCompanyIP(record.ip);
-    const networkLabel = isCompany ? "公司網路" : "異地打卡";
-    const networkColor = isCompany ? "#7f8c8d" : "#e67e22";
-    const makeupBadge = record.isMakeup ? `<span class="badge-makeup">待審核</span>` : "";
+    todayRecords.innerHTML = sorted.map(record => {
+        const status = record.status === "下班" ? "下班" : "上班";
+        const color = status === "下班" ? "#2ecc71" : "#3498db";
+        const time = fixTimeFormat(record.time);
+        const isCompany = isCompanyIP(record.ip);
+        const networkLabel = isCompany ? "公司網路" : "異地打卡";
+        const networkColor = isCompany ? "#7f8c8d" : "#e67e22";
+        const makeupBadge = record.isMakeup ? `<span class="badge-makeup">待審核</span>` : "";
 
-    return `
-      <div class="record-item" style="border-left-color:${color};">
-        <div class="record-info">
-          <div class="record-status">${escapeHtml(status)}${makeupBadge}</div>
-          <div class="record-details" style="color:${networkColor};">${networkLabel}</div>
-        </div>
-        <div class="record-time" style="color:${color};">${escapeHtml(time)}</div>
-      </div>
-    `;
-  }).join("");
+        return `
+            <div class="record-item" style="border-left-color:${color};">
+                <div class="record-info">
+                    <div class="record-status">${escapeHtml(status)}${makeupBadge}</div>
+                    <div class="record-details" style="color:${networkColor};">${networkLabel}</div>
+                </div>
+                <div class="record-time" style="color:${color};">${escapeHtml(time)}</div>
+            </div>
+        `;
+    }).join("");
 }
 
 /* =================================================
- * 儲存今日紀錄
+ * 解析今日紀錄 API
  * ================================================= */
 
-function saveTodayRecords(data) {
-  if (!Array.isArray(data)) return;
-  window.todayRecordsData = data;
-  try {
-    sessionStorage.setItem("cached_today_records", JSON.stringify(data));
-  } catch (error) {
-    console.warn("今日紀錄快取失敗:", error);
-  }
+function parseRecordsResponse(result) {
+    if (result && Array.isArray(result.data)) {
+        return result.data;
+    }
+    if (Array.isArray(result)) {
+        return result;
+    }
+    return [];
 }
 
 /* =================================================
- * 讀取今日紀錄
+ * 今日紀錄
  * ================================================= */
 
 async function updateTodayRecords(options = {}) {
-  const silent = options.silent !== false;
-  const timeoutMs = options.timeoutMs || 6000;
-
-  if (!window.userId) return false;
-  if (window.recordsLoading) return false;
-
-  window.recordsLoading = true;
-
-  try {
-    const date = getTodayString();
-    const url = `${API_ENDPOINT}?action=getToday&userId=${encodeURIComponent(window.userId)}&date=${encodeURIComponent(date)}&_=${Date.now()}`;
-    const result = await fetchJson(url, {}, timeoutMs);
-    const data = Array.isArray(result) ? result : (Array.isArray(result.data) ? result.data : []);
-
-    saveTodayRecords(data);
-    renderRecords(data);
-    return true;
-  } catch (error) {
-    console.warn("今日紀錄背景同步失敗:", error);
-    if (!silent && (!window.todayRecordsData || window.todayRecordsData.length === 0)) {
-      todayRecords.innerHTML = `<div class="records-empty" style="color:#e67e22;">今日紀錄同步中...</div>`;
-    }
-    return false;
-  } finally {
-    window.recordsLoading = false;
-  }
-}
-
-/* =================================================
- * 背景同步
- * ================================================= */
-
-function backgroundRefreshRecords(delay = 500) {
-  clearTimeout(window.recordsRefreshTimer);
-  window.recordsRefreshTimer = setTimeout(() => {
-    updateTodayRecords({ silent: true, timeoutMs: 7000 }).catch(() => {});
-  }, delay);
-}
-
-/* =================================================
- * 前端立即加入紀錄
- * ================================================= */
-
-function optimisticAddRecord(record) {
-  if (!record) return;
-
-  const requestId = String(record.requestId || "").trim();
-  if (requestId && window.processedRequestIds.has(requestId)) return;
-  if (requestId) window.processedRequestIds.add(requestId);
-
-  let data = Array.isArray(window.todayRecordsData) ? [...window.todayRecordsData] : [];
-
-  if (requestId && data.some(item => String(item.requestId || "").trim() === requestId)) {
-    return;
-  }
-
-  if (record.status === "下班" && !record.isMakeup) {
-    let targetIndex = -1;
-    for (let i = data.length - 1; i >= 0; i--) {
-      if (data[i].status === "上班" && !data[i].isMakeup) {
-        targetIndex = i;
-        break;
-      }
+    if (!window.userId) {
+        return [];
     }
 
-    if (targetIndex >= 0) {
-      data[targetIndex] = {
-        ...data[targetIndex],
-        status: "下班",
-        time: record.time,
-        date: record.date,
-        ip: record.ip,
-        requestId: record.requestId
-      };
-    } else {
-      data.push(record);
+    if (window.recordsSyncPromise && !options.force) {
+        return window.recordsSyncPromise;
     }
-  } else {
-    data.push(record);
-  }
 
-  data.sort((a, b) => {
-    const ta = fixTimeFormat(a.time);
-    const tb = fixTimeFormat(b.time);
-    return ta.localeCompare(tb);
-  });
+    window.recordsSyncPromise = (async () => {
+        try {
+            const date = getTodayString();
+            const url = `${API_ENDPOINT}?action=getToday&userId=${encodeURIComponent(window.userId)}&date=${encodeURIComponent(date)}&_=${Date.now()}`;
 
-  saveTodayRecords(data);
-  renderRecords(data);
+            const result = await fetchJson(url, {}, options.timeout || 5000);
+
+            if (result && result.success === false) {
+                throw new Error(result.message || "紀錄讀取失敗");
+            }
+
+            const data = parseRecordsResponse(result);
+
+            sessionStorage.setItem("cached_today_records", JSON.stringify(data));
+            renderRecords(data);
+            window.lastRecordSync = Date.now();
+            return data;
+        } catch (error) {
+            console.warn("今日紀錄背景同步失敗:", error);
+            return null;
+        } finally {
+            window.recordsSyncPromise = null;
+        }
+    })();
+
+    return window.recordsSyncPromise;
 }
 
 /* =================================================
- * POST 打卡
+ * 打卡結果確認
  * ================================================= */
 
-async function submitClock(payload) {
-  return await fetchJson(
-    API_ENDPOINT,
-    {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload)
-    },
-    15000
-  );
+async function confirmClockRecord(requestId, status, maxWaitMs = 7000) {
+    const startedAt = Date.now();
+    let attempt = 0;
+
+    while (Date.now() - startedAt < maxWaitMs) {
+        attempt++;
+
+        try {
+            const date = getTodayString();
+            const url = `${API_ENDPOINT}?action=getToday&userId=${encodeURIComponent(window.userId)}&date=${encodeURIComponent(date)}&_=${Date.now()}`;
+
+            const result = await fetchJson(url, {}, 3000);
+            const data = parseRecordsResponse(result);
+
+            const found = data.find(record => {
+                const sameRequest = String(record.requestId || "").trim() === String(requestId).trim();
+                const sameStatus = String(record.status || "").trim() === String(status).trim();
+                return sameRequest && sameStatus;
+            });
+
+            if (found) {
+                sessionStorage.setItem("cached_today_records", JSON.stringify(data));
+                renderRecords(data);
+                return {
+                    success: true,
+                    date: found.date || date,
+                    time: found.time || "",
+                    record: found
+                };
+            }
+        } catch (error) {
+            console.warn(`確認打卡結果第 ${attempt} 次失敗:`, error);
+        }
+
+        const waitMs = Math.min(800 + (attempt - 1) * 400, 2000);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
+
+    return { success: false };
 }
 
 /* =================================================
- * LINE 自己傳通知
+ * LINE 訊息
  * ================================================= */
 
 async function sendSelfMessage(record) {
-  try {
-    if (!window.liff || !liff.isInClient()) return;
-
-    const headerColor = record.status === "下班" ? "#2ecc71" : "#3498db";
-
-    await liff.sendMessages([
-      {
-        type: "flex",
-        altText: `【打卡通知】${record.status}成功`,
-        contents: {
-          type: "bubble",
-          header: {
-            type: "box",
-            layout: "vertical",
-            contents: [
-              { type: "text", text: `${record.userName} 已打卡`, weight: "bold", size: "lg", color: "#ffffff" }
-            ],
-            backgroundColor: headerColor,
-            paddingAll: "12px"
-          },
-          body: {
-            type: "box",
-            layout: "vertical",
-            spacing: "md",
-            contents: [
-              { type: "text", text: `狀態：${record.status}`, size: "md" },
-              { type: "text", text: `時間：${record.date} ${record.time}`, size: "md" },
-              { type: "text", text: `網路：${record.netType}`, size: "md" }
-            ]
-          }
+    try {
+        if (!window.liff || !liff.isInClient()) {
+            return;
         }
-      }
-    ]);
-  } catch (error) {
-    console.warn("LINE 訊息傳送失敗:", error);
-  }
+
+        const headerColor = record.status === "下班" ? "#2ecc71" : "#3498db";
+
+        await liff.sendMessages([{
+            type: "flex",
+            altText: `【打卡通知】${record.status}成功`,
+            contents: {
+                type: "bubble",
+                header: {
+                    type: "box",
+                    layout: "vertical",
+                    contents: [{
+                        type: "text",
+                        text: `${record.userName} 已打卡`,
+                        weight: "bold",
+                        size: "lg",
+                        color: "#ffffff"
+                    }],
+                    backgroundColor: headerColor,
+                    paddingAll: "12px"
+                },
+                body: {
+                    type: "box",
+                    layout: "vertical",
+                    spacing: "md",
+                    contents: [
+                        { type: "text", text: `狀態：${record.status}`, size: "md" },
+                        { type: "text", text: `時間：${record.date} ${record.time}`, size: "md" },
+                        { type: "text", text: `網路：${record.netType}`, size: "md" }
+                    ]
+                }
+            }
+        }]);
+    } catch (error) {
+        console.warn("LINE 訊息傳送失敗:", error);
+    }
 }
 
 /* =================================================
- * 打卡成功畫面
+ * 打卡成功視窗
  * ================================================= */
 
 async function showClockResult(apiData, status, isMakeup) {
-  await Swal.fire({
-    icon: "success",
-    title: isMakeup ? "🎉 補打卡成功！" : "🎉 打卡成功！",
-    html: `
-      <div style="font-size:16px; margin-top:8px;">
-        <strong>打卡時間：</strong>
-        <br>
-        <span style="color:#2980b9; font-size:18px; font-weight:bold;">
-          ${escapeHtml(apiData.date || "")} ${escapeHtml(apiData.time || "")}
-        </span>
-      </div>
-    `,
-    showConfirmButton: false,
-    timer: 1400,
-    timerProgressBar: true,
-    backdrop: "rgba(0,0,0,0.5)",
-    customClass: { popup: "custom-swal-popup" }
-  });
+    await Swal.fire({
+        icon: "success",
+        title: isMakeup ? "🎉 補打卡成功！" : "🎉 打卡成功！",
+        html: `
+            <div style="font-size:16px; margin-top:8px;">
+                <strong>打卡時間：</strong>
+                <br>
+                <span style="color:#2980b9; font-size:18px; font-weight:bold;">
+                    ${escapeHtml(apiData.date || "")} ${escapeHtml(apiData.time || "")}
+                </span>
+            </div>
+        `,
+        showConfirmButton: false,
+        timer: 1800,
+        timerProgressBar: true,
+        backdrop: "rgba(0,0,0,0.5)",
+        customClass: { popup: "custom-swal-popup" }
+    });
 }
 
 /* =================================================
- * 核心打卡函式 (已整合轉圈圈)
+ * 打卡
  * ================================================= */
 
 async function performClockIn(status, customDate = "", customTime = "", isMakeup = false) {
-  if (window.isSubmitting) return;
-
-  if (!window.userId) {
-    await Swal.fire({
-      icon: "warning",
-      title: "提示",
-      text: "尚未取得 LINE 使用者資訊，請稍候再試。",
-      confirmButtonText: "確定",
-      customClass: { popup: "custom-swal-popup" }
-    });
-    return;
-  }
-
-  if (!window.userReady && !isMakeup) {
-    await Swal.fire({
-      icon: "warning",
-      title: "目前無法打卡",
-      text: "目前為無效打卡區，無法打卡！",
-      confirmButtonText: "確定",
-      customClass: { popup: "custom-swal-popup" }
-    });
-    return;
-  }
-
-  window.isSubmitting = true;
-  window.currentRequestId = createRequestId();
-  const requestId = window.currentRequestId;
-
-  setButtonsLock(true, "處理中...", "處理中...");
-  
-  // 1. 這裡呼叫轉圈圈畫面
-  showClockLoading(
-      isMakeup ? "補打卡中" : (status === "上班" ? "上班打卡中" : "下班打卡中"),
-      "正在確認打卡資料，請稍候..."
-  );
-
-  try {
-    const ip = await preloadIP();
-    const isCompany = isCompanyIP(ip);
-
-    if (!isMakeup && !isCompany && !window.allowRemote) {
-      throw new Error("非公司網路且未授權異地打卡！");
-    }
-
-    let lat = "";
-    let lng = "";
-    if (!isMakeup && !isCompany && window.allowRemote) {
-      const geo = await getGeoLocation();
-      lat = geo.lat;
-      lng = geo.lng;
-    }
-
-    const payload = {
-      userId: window.userId,
-      displayName: window.userName,
-      status: status,
-      ip: ip,
-      lat: lat,
-      lng: lng,
-      customDate: customDate,
-      customTime: customTime,
-      isMakeup: isMakeup,
-      requestId: requestId
-    };
-
-    let apiData;
-    try {
-      apiData = await submitClock(payload);
-    } catch (postError) {
-      if (
-        postError.code === "REQUEST_TIMEOUT" ||
-        postError.message === "Failed to fetch" ||
-        postError.name === "TypeError"
-      ) {
-        Swal.close(); // 關閉轉圈圈
-        await Swal.fire({
-          icon: "info",
-          title: "打卡請求已送出",
-          html: `
-            <div style="font-size:15px; line-height:1.8;">
-              伺服器回應較慢。<br>
-              系統可能已完成打卡。<br>
-              <strong>請勿重複按打卡。</strong>
-            </div>
-          `,
-          confirmButtonText: "知道了",
-          customClass: { popup: "custom-swal-popup" }
-        });
-        backgroundRefreshRecords(1000);
+    if (window.isSubmitting) {
         return;
-      }
-      throw postError;
     }
 
-    if (!apiData || apiData.success !== true) {
-      throw new Error(apiData?.message || "打卡失敗，請稍後再試");
+    if (!window.userId) {
+        await Swal.fire({
+            icon: "warning",
+            title: "提示",
+            text: "尚未取得 LINE 使用者資訊，請稍候再試。",
+            confirmButtonText: "確定",
+            customClass: { popup: "custom-swal-popup" }
+        });
+        return;
     }
 
-    const localRecord = {
-      status: status,
-      time: apiData.time || (customTime ? fixTimeFormat(customTime) : fixTimeFormat(new Date().toLocaleTimeString("zh-TW", { hour12: false }))),
-      date: apiData.date || customDate || getTodayString(),
-      ip: ip,
-      requestId: apiData.requestId || requestId,
-      isMakeup: isMakeup,
-      userName: window.userName
-    };
+    if (!window.userReady && !isMakeup) {
+        await Swal.fire({
+            icon: "warning",
+            title: "目前無法打卡",
+            text: "目前為無效打卡區，無法打卡！",
+            confirmButtonText: "確定",
+            customClass: { popup: "custom-swal-popup" }
+        });
+        return;
+    }
 
-    optimisticAddRecord(localRecord);
-    
-    // 2. 伺服器成功回應後關閉轉圈圈，並顯示成功畫面
-    Swal.close();
-    await showClockResult(apiData, status, isMakeup);
+    window.isSubmitting = true;
+    window.currentRequestId = createRequestId();
+    const requestId = window.currentRequestId;
 
-    sendSelfMessage({
-      userName: window.userName,
-      status: status,
-      date: localRecord.date,
-      time: localRecord.time,
-      netType: isCompany ? "公司網路" : "異地打卡(GPS)"
-    }).catch(() => {});
+    setButtonsLock(true, "處理中...", "處理中...");
 
-    backgroundRefreshRecords(1200);
-  } catch (error) {
-    console.error("performClockIn error:", error);
-    
-    // 3. 發生錯誤時也必須關閉轉圈圈
-    Swal.close();
-    await Swal.fire({
-      icon: "error",
-      title: "打卡失敗",
-      html: `<div style="color:#c0392b; font-weight:bold; line-height:1.7;">${escapeHtml(error.message || "網路連線異常")}</div>`,
-      confirmButtonText: "確定",
-      customClass: { popup: "custom-swal-popup" }
-    });
-    backgroundRefreshRecords(500);
-  } finally {
-    window.isSubmitting = false;
-    updateStatus().catch(error => {
-      console.warn("更新打卡區域失敗:", error);
-    });
-  }
+    showClockLoading(
+        isMakeup ? "補打卡中" : (status === "上班" ? "上班打卡中" : "下班打卡中"),
+        "正在確認打卡資料，請稍候..."
+    );
+
+    try {
+        const ip = await preloadIP();
+        const isCompany = isCompanyIP(ip);
+
+        if (!isMakeup && !isCompany && !window.allowRemote) {
+            throw new Error("非公司網路且未授權異地打卡！");
+        }
+
+        let lat = "";
+        let lng = "";
+
+        if (!isMakeup && !isCompany && window.allowRemote) {
+            updateClockLoading(
+                status === "上班" ? "上班打卡中" : "下班打卡中",
+                "正在取得定位資料..."
+            );
+            const geo = await getGeoLocation();
+            lat = geo.lat;
+            lng = geo.lng;
+        }
+
+        const payload = {
+            userId: window.userId,
+            displayName: window.userName,
+            status: status,
+            ip: ip,
+            lat: lat,
+            lng: lng,
+            customDate: customDate,
+            customTime: customTime,
+            isMakeup: isMakeup,
+            requestId: requestId
+        };
+
+        updateClockLoading(
+            isMakeup ? "補打卡中" : (status === "上班" ? "上班打卡中" : "下班打卡中"),
+            "資料正在送出，請稍候..."
+        );
+
+        let apiData;
+
+        try {
+            apiData = await fetchJson(
+                API_ENDPOINT,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify(payload)
+                },
+                12000
+            );
+        } catch (postError) {
+            if (
+                postError.code === "REQUEST_TIMEOUT" ||
+                postError.message === "Failed to fetch" ||
+                postError.name === "TypeError"
+            ) {
+                updateClockLoading(
+                    "正在確認打卡結果",
+                    "伺服器回應較慢，正在確認是否已完成打卡..."
+                );
+
+                const confirmed = await confirmClockRecord(requestId, status, 7000);
+
+                if (confirmed.success) {
+                    apiData = {
+                        success: true,
+                        date: confirmed.date,
+                        time: confirmed.time,
+                        message: "打卡成功",
+                        requestId: requestId
+                    };
+                } else {
+                    throw new Error("伺服器回應較慢，目前無法確認結果。請先不要重複打卡，稍後重新整理頁面確認紀錄。");
+                }
+            } else {
+                throw postError;
+            }
+        }
+
+        if (!apiData || apiData.success !== true) {
+            throw new Error(apiData?.message || "打卡失敗，請稍後再試");
+        }
+
+        Swal.close();
+
+        await showClockResult(apiData, status, isMakeup);
+
+        sendSelfMessage({
+            userName: window.userName,
+            status: status,
+            date: apiData.date,
+            time: apiData.time,
+            netType: isCompany ? "公司網路" : "異地打卡(GPS)"
+        }).catch(() => {});
+
+        updateTodayRecords({
+            force: true,
+            timeout: 4000
+        }).catch(() => {});
+    } catch (error) {
+        console.error("performClockIn error:", error);
+        Swal.close();
+
+        await Swal.fire({
+            icon: "error",
+            title: "打卡結果",
+            html: `<div style="color:#c0392b; font-weight:bold; line-height:1.7;">${escapeHtml(error.message || "網路連線異常")}</div>`,
+            confirmButtonText: "確定",
+            customClass: { popup: "custom-swal-popup" }
+        });
+
+        updateTodayRecords({
+            force: true,
+            timeout: 4000
+        }).catch(() => {});
+    } finally {
+        window.isSubmitting = false;
+
+        setButtonsLock(false, "上班", "下班");
+
+        updateStatus().catch(error => {
+            console.warn("背景更新狀態失敗:", error);
+        });
+    }
 }
 
 /* =================================================
- * 事件綁定
+ * 綁定打卡按鈕
  * ================================================= */
 
 if (btnStart) {
-  btnStart.addEventListener("click", () => performClockIn("上班"));
+    btnStart.addEventListener("click", () => {
+        performClockIn("上班");
+    });
 }
 
 if (btnEnd) {
-  btnEnd.addEventListener("click", () => performClockIn("下班"));
-}
-
-if (btnApprove) {
-  btnApprove.addEventListener("click", () => {
-    window.location.href = "https://script.google.com/macros/s/AKfycbyxXrvVxfgwrI-SdXM03QEYxEpG-xqyjVQcxdNz1IBK3DtFC-kUFjHhRaNtgXNU-Mdu/exec";
-  });
+    btnEnd.addEventListener("click", () => {
+        performClockIn("下班");
+    });
 }
 
 /* =================================================
- * 初始化
+ * 管理員按鈕
+ * ================================================= */
+
+if (btnApprove) {
+    btnApprove.addEventListener("click", () => {
+        window.location.href = "https://script.google.com/macros/s/AKfycbyxXrvVxfgwrI-SdXM03QEYxEpG-xqyjVQcxdNz1IBK3DtFC-kUFjHhRaNtgXNU-Mdu/exec";
+    });
+}
+
+/* =================================================
+ * 頁面初始化
  * ================================================= */
 
 window.addEventListener("load", async () => {
-  if (statusInfo) {
-    statusInfo.textContent = "檢查中...";
-    statusInfo.style.background = "#95a5a6";
-  }
+    try {
+        if (statusInfo) {
+            statusInfo.textContent = "檢查中...";
+            statusInfo.style.background = "#95a5a6";
+        }
 
-  setButtonsLock(true, "同步中...", "同步中...");
-  loadUserFromCache();
-  preloadIP().catch(() => {});
+        setButtonsLock(true, "同步中...", "同步中...");
 
-  try {
-    const loginOK = await initUser();
-    if (!loginOK) {
-      if (statusInfo) {
-        statusInfo.textContent = "請完成 LINE 登入";
-        statusInfo.style.background = "#95a5a6";
-      }
-      setButtonsLock(true, "上班", "下班");
-      return;
+        loadUserFromCache();
+
+        preloadIP().catch(() => {});
+
+        let initResult;
+
+        try {
+            initResult = await initUser();
+        } catch (error) {
+            console.error("LINE 初始化失敗:", error);
+            if (!window.userId) {
+                throw error;
+            }
+        }
+
+        if (initResult === false && !window.userId) {
+            return;
+        }
+
+        if (!window.userId) {
+            if (statusInfo) {
+                statusInfo.textContent = "請完成 LINE 登入";
+                statusInfo.style.background = "#95a5a6";
+            }
+            setButtonsLock(true, "上班", "下班");
+            return;
+        }
+
+        updateStatus().catch(error => {
+            console.warn("初始化狀態同步失敗:", error);
+        });
+
+        updateTodayRecords({
+            force: true,
+            timeout: 5000
+        }).catch(error => {
+            console.warn("初始化今日紀錄同步失敗:", error);
+        });
+    } catch (error) {
+        console.error("初始化失敗:", error);
+
+        if (window.userId) {
+            if (statusInfo) {
+                statusInfo.textContent = "網路同步較慢";
+                statusInfo.style.background = "#f39c12";
+            }
+            setButtonsLock(false, "上班", "下班");
+        } else {
+            if (statusInfo) {
+                statusInfo.textContent = "初始化失敗，請重新整理";
+                statusInfo.style.background = "#e74c3c";
+            }
+            setButtonsLock(true, "重新整理", "重新整理");
+        }
     }
-
-    updateStatus().catch(error => {
-      console.warn("初始化打卡區域失敗:", error);
-    });
-
-    updateTodayRecords({ silent: true, timeoutMs: 7000 }).catch(error => {
-      console.warn("初始化今日紀錄失敗:", error);
-    });
-  } catch (error) {
-    console.error("初始化失敗:", error);
-    if (statusInfo) {
-      statusInfo.textContent = "初始化失敗，請重新整理";
-      statusInfo.style.background = "#e74c3c";
-    }
-    setButtonsLock(true, "重新整理", "重新整理");
-  }
 });
 
 /* =================================================
- * 視窗可見性與定時同步
+ * 頁面回到前景
  * ================================================= */
 
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && window.userId) {
-    backgroundRefreshRecords(500);
+    if (document.visibilityState !== "visible") {
+        return;
+    }
+
+    if (!window.userId) {
+        return;
+    }
+
+    updateTodayRecords({
+        force: true,
+        timeout: 4000
+    }).catch(() => {});
+
     updateStatus().catch(() => {});
-  }
 });
 
+/* =================================================
+ * 定時背景同步
+ * ================================================= */
+
 setInterval(() => {
-  if (document.visibilityState === "visible" && window.userId && !window.isSubmitting) {
-    updateTodayRecords({ silent: true, timeoutMs: 7000 }).catch(() => {});
-  }
+    if (document.visibilityState !== "visible") {
+        return;
+    }
+
+    if (!window.userId) {
+        return;
+    }
+
+    if (Date.now() - window.lastRecordSync < 30000) {
+        return;
+    }
+
+    updateTodayRecords({
+        timeout: 4000
+    }).catch(() => {});
 }, 60000);
 
 </script>
