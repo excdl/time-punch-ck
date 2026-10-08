@@ -719,35 +719,21 @@ async function sendSelfMessage(record) {
 /* =========================================================
    取得今日紀錄
 ========================================================= */
-async function updateTodayRecords(showLoading = false) {
-    if (!window.userId) return;
-    if (showLoading && !sessionStorage.getItem("cached_today_records")) {
-        todayRecords.innerHTML = `
-            <div class="record-item" style="border-left-color:#bdc3c7;opacity:.6;">
-                <div class="record-info">
-                    <div style="background:#e0e0e0;width:80px;height:16px;border-radius:4px;margin-bottom:6px;"></div>
-                    <div style="background:#e0e0e0;width:60px;height:12px;border-radius:4px;"></div>
-                </div>
-                <div style="background:#e0e0e0;width:50px;height:20px;border-radius:4px;"></div>
-            </div>
-        `;
-    }
-    try {
+async function updateTodayRecords() {
+      if (!window.userId) return;
+      try {
         const date = getTodayString();
-        const url = `${API_ENDPOINT}?action=getToday&userId=${encodeURIComponent(window.userId)}&date=${encodeURIComponent(date)}`;
-        const response = await fetchWithTimeout(url, {}, 6000);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
+        const result = await fetchJson(`${API_ENDPOINT}?action=getToday&userId=${encodeURIComponent(window.userId)}&date=${encodeURIComponent(date)}`, {}, 8000);
+        const data = Array.isArray(result) ? result : (Array.isArray(result.data) ? result.data : []);
         sessionStorage.setItem("cached_today_records", JSON.stringify(data));
         renderRecords(data);
-    } catch (error) {
-        console.error("今日紀錄讀取失敗:", error);
-        const cached = sessionStorage.getItem("cached_today_records");
-        if (!cached) {
-            todayRecords.innerHTML = `<div class="records-empty" style="color:#e74c3c;">今日打卡紀錄讀取失敗</div>`;
+      } catch (error) {
+        const cache = sessionStorage.getItem("cached_today_records");
+        if (!cache) {
+          todayRecords.innerHTML = `<div class="records-empty" style="color:#e74c3c;">今日打卡紀錄讀取失敗</div>`;
         }
+      }
     }
-}
 
 /* =========================================================
    渲染紀錄
