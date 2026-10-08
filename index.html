@@ -425,9 +425,9 @@ function setButtonsLock(locked, startText = "上班", endText = "下班") {
 }
 
 /* =========================================================
-   Fetch Timeout (縮短逾時至 6 秒以加速回應)
+   Fetch Timeout
 ========================================================= */
-async function fetchWithTimeout(url, options = {}, timeout = 6000) {
+async function fetchWithTimeout(url, options = {}, timeout = 8000) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
     try {
@@ -439,20 +439,20 @@ async function fetchWithTimeout(url, options = {}, timeout = 6000) {
 }
 
 /* =========================================================
-   IP 檢查 (縮短 Timeout 到 1.5 秒，失敗直接退回快取)
+   IP 檢查
 ========================================================= */
 async function preloadIP(forceRefresh = false) {
     const cache = sessionStorage.getItem("myIP");
     if (cache && !forceRefresh) return cache;
     try {
-        const response = await fetchWithTimeout("https://api.ipify.org?format=json", {}, 1500);
+        const response = await fetchWithTimeout("https://api.ipify.org?format=json", {}, 2000);
         if (!response.ok) return cache || "";
         const data = await response.json();
         const ip = String(data.ip || "").trim();
         if (ip) sessionStorage.setItem("myIP", ip);
         return ip || cache || "";
     } catch (error) {
-        console.warn("取得 IP 逾時或失敗，使用快取:", error);
+        console.warn("取得 IP 逾時或失敗，使用快取或略過:", error);
         return cache || "";
     }
 }
@@ -476,8 +476,6 @@ function loadUserFromCache() {
         if (MANAGERS.includes(window.userId)) {
             btnApprove.style.display = "block";
         }
-        // 快取存在時先解鎖按鈕，讓使用者不用枯等初始化
-        setButtonsLock(false, "上班", "下班");
     }
     const cachedRecords = sessionStorage.getItem("cached_today_records");
     if (cachedRecords) {
@@ -540,7 +538,7 @@ async function updateStatus() {
     }
     try {
         const url = `${API_ENDPOINT}?action=checkRemote&userId=${encodeURIComponent(window.userId)}`;
-        const response = await fetchWithTimeout(url, {}, 4000);
+        const response = await fetchWithTimeout(url, {}, 5000);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const remoteData = await response.json();
         const remoteAllowed = remoteData.allowed === true;
@@ -555,18 +553,16 @@ async function updateStatus() {
             setButtonsLock(true, "上班", "下班");
         }
     } catch (error) {
-        console.warn("查詢異地權限失敗，維持預設或快取狀態:", error);
-        // 網路檢查失敗時，若先前有快取使用者則允許基本點擊，避免完全卡死
-        if (window.userId) {
-            statusInfo.textContent = "網路檢查逾時(寬限中)";
-            statusInfo.style.background = "#e67e22";
-            setButtonsLock(false, "上班", "下班");
-        }
+        console.error("查詢異地權限失敗:", error);
+        window.allowRemote = false;
+        statusInfo.textContent = "網路檢查失敗";
+        statusInfo.style.background = "#e67e22";
+        setButtonsLock(true, "上班", "下班");
     }
 }
 
 /* =========================================================
-   GPS 定位 (加速逾時至 1.5 秒，避免卡住打卡)
+   GPS 定位
 ========================================================= */
 function getGeoLocation() {
     return new Promise(resolve => {
@@ -574,25 +570,18 @@ function getGeoLocation() {
             resolve({ lat: "", lng: "" });
             return;
         }
-        const geoTimer = setTimeout(() => {
-            console.warn("GPS 定位逾時，略過座標繼續打卡");
-            resolve({ lat: "", lng: "" });
-        }, 1500);
-
         navigator.geolocation.getCurrentPosition(
             position => {
-                clearTimeout(geoTimer);
                 resolve({
                     lat: position.coords.latitude,
                     lng: position.coords.longitude
                 });
             },
             error => {
-                clearTimeout(geoTimer);
-                console.warn("GPS 取得失敗:", error);
+                console.warn("GPS 取得失敗或逾時:", error);
                 resolve({ lat: "", lng: "" });
             },
-            { timeout: 1200, enableHighAccuracy: false, maximumAge: 60000 }
+            { timeout: 3000, enableHighAccuracy: false, maximumAge: 60000 }
         );
     });
 }
@@ -746,7 +735,7 @@ async function updateTodayRecords(showLoading = false) {
     try {
         const date = getTodayString();
         const url = `${API_ENDPOINT}?action=getToday&userId=${encodeURIComponent(window.userId)}&date=${encodeURIComponent(date)}`;
-        const response = await fetchWithTimeout(url, {}, 5000);
+        const response = await fetchWithTimeout(url, {}, 6000);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         sessionStorage.setItem("cached_today_records", JSON.stringify(data));
@@ -790,7 +779,7 @@ function renderRecords(data) {
 }
 
 /* =========================================================
-   打卡主程式 (優化逾時機制與非同步 GPS)
+   打卡主程式
 ========================================================= */
 async function performClockIn(status, customDate = "", customTime = "", isMakeup = false) {
     if (isClocking) return;
@@ -819,33 +808,31 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
     isClocking = true;
     setButtonsLock(true, "處理中...", "處理中...");
     
+    // 呼叫 SweetAlert2 讀取彈窗
     showClockLoading(isMakeup ? "補打卡中" : (status === "上班" ? "上班打卡中" : "下班打卡中"), "正在確認打卡資料，請稍候...");
 
     let hasFinished = false;
-    // 延長安全逾時至 10 秒，並提供更友善的提示
     const safetyTimer = setTimeout(() => {
         if (!hasFinished) {
             hasFinished = true;
             Swal.close();
             Swal.fire({
-                icon: "warning",
-                title: "伺服器回應較慢",
-                html: `<span style="color:#e67e22;">打卡指令已發送，但伺服器回覆逾時。請至下方「今日打卡紀錄」確認是否成功，或稍候重新整理。</span>`,
+                icon: "error",
+                title: "網路回應逾時",
+                html: `<span style="color:#c0392b;">伺服器回應較慢，請至下方「今日打卡紀錄」確認是否已打卡成功</span>`,
                 confirmButtonText: "確定",
                 customClass: { popup: "custom-swal-popup" }
             });
             isClocking = false;
-            updateTodayRecords(false);
             updateStatus();
         }
-    }, 10000);
+    }, 12000);
 
     try {
         const ip = sessionStorage.getItem("myIP") || "";
         let lat = "";
         let lng = "";
         
-        // 若為異地打卡，非同步取得 GPS（內建 1.5 秒強制跳過，避免卡住）
         if (!isMakeup && !isCompanyIP(ip) && window.allowRemote) {
             const geo = await getGeoLocation();
             lat = geo.lat;
@@ -868,7 +855,7 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
             method: "POST",
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify(body)
-        }, 8000);
+        }, 10000);
 
         if (hasFinished) return;
         hasFinished = true;
@@ -905,7 +892,7 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
                 title: isMakeup ? "🎉 補打卡成功！" : "🎉 打卡成功！",
                 html: `<div style="font-size:16px;margin-top:8px;"><strong>打卡時間：</strong><br><span style="color:#2980b9;font-size:18px;font-weight:bold;">${escapeHtml(apiData.date || "")} ${escapeHtml(apiData.time || "")}</span></div>`,
                 showConfirmButton: false,
-                timer: 1600,
+                timer: 1800,
                 backdrop: "rgba(0,0,0,0.5)",
                 customClass: { popup: "custom-swal-popup" }
             });
@@ -945,28 +932,22 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
 }
 
 /* =========================================================
-   初始化 (平行化處理 + 快取優先呈現)
+   初始化
 ========================================================= */
 window.addEventListener("load", async () => {
     statusInfo.textContent = "檢查中...";
     statusInfo.style.background = "#95a5a6";
-    
-    // 1. 先讀取快取讓介面秒開
+    setButtonsLock(true, "同步中...", "同步中...");
     loadUserFromCache();
-
     try {
-        // 2. 非同步平行初始化：LIFF登入與 IP 取得同時執行
-        await Promise.allSettled([initUser(), preloadIP()]);
-        // 3. 取得狀態與紀錄
-        await Promise.allSettled([updateStatus(), updateTodayRecords(false)]);
+        await Promise.all([initUser(), preloadIP()]);
+        await Promise.all([updateStatus(), updateTodayRecords(false)]);
     } catch (error) {
-        console.error("初始化部分失敗:", error);
-        if (!window.userId) {
-            userInfo.textContent = "請透過 LINE 開啟";
-            statusInfo.textContent = "未登入";
-            statusInfo.style.background = "#e74c3c";
-            setButtonsLock(true, "上班", "下班");
-        }
+        console.error("初始化失敗:", error);
+        if (!window.userId) userInfo.textContent = "初始化失敗";
+        statusInfo.textContent = "初始化失敗";
+        statusInfo.style.background = "#e74c3c";
+        setButtonsLock(true, "上班", "下班");
     }
 });
 
@@ -990,4 +971,5 @@ btnApprove.addEventListener("click", () => {
 </script>
 </body>
 </html>
+
 
