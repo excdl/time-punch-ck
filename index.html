@@ -768,6 +768,30 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
             return;
         }
 
+        // 🛑【已加入】攔截打卡次數上限 (滿 3 次)
+        if (json && json.code === "MAX_LIMIT") {
+            Swal.close();
+            Swal.fire({
+                icon: "warning",
+                title: "已達打卡上限",
+                text: json.message, // 顯示後端傳來的「已達 上班/下班 打卡上限 (3次)」
+                customClass: { popup: "custom-swal-popup" }
+            });
+            return; // 終止執行，不會彈出成功視窗
+        }
+
+        // 🛑【已加入】攔截其他失敗狀況 (例如非公司網路等錯誤)
+        if (json && json.success === false) {
+            Swal.close();
+            Swal.fire({
+                icon: "error",
+                title: "打卡失敗",
+                text: json.message || "發生未知錯誤",
+                customClass: { popup: "custom-swal-popup" }
+            });
+            return;
+        }
+
         let apiData = {
             success: true,
             date: json.date || getTodayString(),
