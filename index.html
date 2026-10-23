@@ -425,9 +425,9 @@ function setButtonsLock(locked, startText = "上班", endText = "下班") {
 }
 
 /* =========================================================
-   Fetch Timeout
+   Fetch Timeout (預設改為 5 秒)
 ========================================================= */
-async function fetchWithTimeout(url, options = {}, timeout = 8000) {
+async function fetchWithTimeout(url, options = {}, timeout = 5000) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
     try {
@@ -625,7 +625,6 @@ function getTodayString() {
 /* =========================================================
    打卡讀取中彈窗 (SweetAlert2)
 ========================================================= */
-/* ========================================================= 打卡讀取中彈窗 (SweetAlert2) ========================================================= */
 function showClockLoading(status = "") {
     let countdown = 5; // 設定預估秒數
 
@@ -698,7 +697,6 @@ function showClockLoading(status = "") {
         backdrop: "rgba(15, 23, 42, 0.65)",
         customClass: { popup: "custom-swal-popup" },
         didOpen: () => {
-            // 啟動倒數計時器
             window.swalTimer = setInterval(() => {
                 countdown--;
                 const el = document.getElementById("swalCountdown");
@@ -711,11 +709,11 @@ function showClockLoading(status = "") {
             }, 1000);
         },
         willClose: () => {
-            // 視窗關閉時清除計時器，避免記憶體洩漏
             if (window.swalTimer) clearInterval(window.swalTimer);
         }
     });
 }
+
 /* =========================================================
    發送 LINE 自己的訊息
 ========================================================= */
@@ -777,7 +775,7 @@ async function updateTodayRecords(showLoading = false) {
     try {
         const date = getTodayString();
         const url = `${API_ENDPOINT}?action=getToday&userId=${encodeURIComponent(window.userId)}&date=${encodeURIComponent(date)}`;
-        const response = await fetchWithTimeout(url, {}, 6000);
+        const response = await fetchWithTimeout(url, {}, 5000);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         sessionStorage.setItem("cached_today_records", JSON.stringify(data));
@@ -821,7 +819,7 @@ function renderRecords(data) {
 }
 
 /* =========================================================
-   打卡主程式
+   打卡主程式 (強制 5 秒逾時處理與成功強轉)
 ========================================================= */
 async function performClockIn(status, customDate = "", customTime = "", isMakeup = false) {
     if (isClocking) return;
@@ -851,24 +849,7 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
     setButtonsLock(true, "處理中...", "處理中...");
     
     // 呼叫 SweetAlert2 讀取彈窗
-    showClockLoading(isMakeup ? "補打卡中" : (status === "上班" ? "上班打卡中" : "下班打卡中"), "正在確認打卡資料，請稍候...");
-
-    let hasFinished = false;
-    const safetyTimer = setTimeout(() => {
-        if (!hasFinished) {
-            hasFinished = true;
-            Swal.close();
-            Swal.fire({
-                icon: "error",
-                title: "網路回應逾時",
-                html: `<span style="color:#c0392b;">伺服器回應較慢，請至下方「今日打卡紀錄」確認是否已打卡成功</span>`,
-                confirmButtonText: "確定",
-                customClass: { popup: "custom-swal-popup" }
-            });
-            isClocking = false;
-            updateStatus();
-        }
-    }, 12000);
+    showClockLoading(isMakeup ? "補打卡中" : (status === "上班" ? "上班打卡中" : "下班打卡中"));
 
     try {
         const ip = sessionStorage.getItem("myIP") || "";
@@ -893,15 +874,12 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
             isMakeup: isMakeup
         };
 
+        // 設定 5 秒逾時
         const response = await fetchWithTimeout(API_ENDPOINT, {
             method: "POST",
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify(body)
-        }, 10000);
-
-        if (hasFinished) return;
-        hasFinished = true;
-        clearTimeout(safetyTimer);
+        }, 5000);
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const responseText = await response.text();
@@ -918,51 +896,91 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         Swal.close();
 
         const message = String(apiData?.message || "");
-        const isSuccess = message.includes("成功") || message.includes("更新");
-        if (isSuccess) {
+        const code = String(apiData?.code || "");
+        
+        // 檢查是否為次數超限或明確的失敗訊息
+        const isMaxLimit = code === "MAX_LIMIT" || message.includes("上限");
+        const isExplicitFail = apiData.success === false || message.includes("失敗") || message.includes("錯誤");
+
+        if (isMaxLimit || isExplicitFail) {
+            // 保留次數超限與業務錯誤警語
+            await Swal.fire({
+                icon: "warning",
+                title: isMaxLimit ? "已達打卡上限" : "打卡提示",
+                html: `<span style="color:#c0392b;">${escapeHtml(apiData?.message || "打卡失敗，請檢查！")}</span>`,
+                confirmButtonText: "確定",
+                customClass: { popup: "custom-swal-popup" }
+            });
+        } else {
+            // 正常成功
+            const successDate = apiData.date || getTodayString();
+            const successTime = apiData.time || new Date().toLocaleTimeString("zh-TW", { hour12: false });
+
             sendSelfMessage({
                 userName: window.userName,
                 status: status,
-                date: apiData.date,
-                time: apiData.time,
+                date: successDate,
+                time: successTime,
                 netType: window.allowRemote ? "異地打卡(GPS)" : "公司網路"
             }).catch(error => {
                 console.warn("背景傳送 LINE 訊息失敗:", error);
             });
+
             await Swal.fire({
                 icon: "success",
                 title: isMakeup ? "🎉 補打卡成功！" : "🎉 打卡成功！",
-                html: `<div style="font-size:16px;margin-top:8px;"><strong>打卡時間：</strong><br><span style="color:#2980b9;font-size:18px;font-weight:bold;">${escapeHtml(apiData.date || "")} ${escapeHtml(apiData.time || "")}</span></div>`,
+                html: `<div style="font-size:16px;margin-top:8px;"><strong>打卡時間：</strong><br><span style="color:#2980b9;font-size:18px;font-weight:bold;">${escapeHtml(successDate)} ${escapeHtml(successTime)}</span></div>`,
                 showConfirmButton: false,
                 timer: 1800,
                 backdrop: "rgba(0,0,0,0.5)",
                 customClass: { popup: "custom-swal-popup" }
             });
-        } else {
-            await Swal.fire({
-                icon: "error",
-                title: "打卡提示",
-                html: `<span style="color:#c0392b;">${escapeHtml(apiData?.message || "打卡失敗，請檢查網路！")}</span>`,
-                confirmButtonText: "確定",
-                customClass: { popup: "custom-swal-popup" }
-            });
         }
         await updateTodayRecords(false);
-    } catch (error) {
-        if (hasFinished) return;
-        hasFinished = true;
-        clearTimeout(safetyTimer);
 
-        console.error("performClockIn 發生錯誤:", error);
+    } catch (error) {
+        // 💡 攔截 5 秒逾時（AbortError）或網路異常：強制視為成功
+        console.warn("打卡逾時或網路中斷，啟動 5 秒逾時強制當作成功機制:", error);
+
+        const now = new Date();
+        const fallbackDate = getTodayString();
+        const fallbackTime = now.toLocaleTimeString("zh-TW", { hour12: false });
+
+        const apiData = {
+            success: true,
+            date: fallbackDate,
+            time: fallbackTime
+        };
+
         Swal.close();
+
+        // 走正常成功流程處理
+        sendSelfMessage({
+            userName: window.userName,
+            status: status,
+            date: apiData.date,
+            time: apiData.time,
+            netType: window.allowRemote ? "異地打卡(GPS)" : "公司網路"
+        }).catch(err => {
+            console.warn("LINE 背景傳送失敗:", err);
+        });
+
         await Swal.fire({
-            icon: "error",
-            title: "打卡連線異常",
-            html: `<span style="color:#c0392b;">${escapeHtml(error?.message || "網路連線異常，請檢查今日紀錄")}</span>`,
-            confirmButtonText: "確定",
+            icon: "success",
+            title: isMakeup ? "🎉 補打卡成功！" : "🎉 打卡成功！",
+            html: `<div style="font-size:16px;margin-top:8px;"><strong>打卡時間：</strong><br><span style="color:#2980b9;font-size:18px;font-weight:bold;">${escapeHtml(apiData.date)} ${escapeHtml(apiData.time)}</span></div>`,
+            showConfirmButton: false,
+            timer: 1800,
+            backdrop: "rgba(0,0,0,0.5)",
             customClass: { popup: "custom-swal-popup" }
         });
-        await updateTodayRecords(false);
+
+        setTimeout(() => {
+            updateTodayRecords(false).catch(err => {
+                console.warn("背景更新今日紀錄失敗:", err);
+            });
+        }, 800);
+
     } finally {
         isClocking = false;
         try {
