@@ -626,21 +626,18 @@ function getTodayString() {
    打卡讀取中彈窗 (SweetAlert2)
 ========================================================= */
 function showClockLoading(status = "") {
-    let countdown = 5; // 設定預估秒數
+    let countdown = 5;
 
     Swal.fire({
         html: `
             <div style="padding: 20px 10px 10px 10px; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
                 
-                <!-- 專業脈動圓環與置中倒數數字 -->
                 <div style="position: relative; width: 90px; height: 90px; margin: 0 auto 20px auto;">
-                    <!-- 外層進度軌道底色 -->
                     <div style="
                         position: absolute; top: 0; left: 0; width: 90px; height: 90px; 
                         border: 3px solid #f1f5f9; border-radius: 50%; box-sizing: border-box;
                     "></div>
 
-                    <!-- 內層旋轉動態進度環 -->
                     <div style="
                         position: absolute; top: 0; left: 0; width: 90px; height: 90px; 
                         border: 3px solid transparent; border-top-color: #2563eb; border-right-color: #3b82f6;
@@ -648,7 +645,6 @@ function showClockLoading(status = "") {
                         box-sizing: border-box;
                     "></div>
 
-                    <!-- 核心數字與呼吸燈光暈 -->
                     <div style="
                         position: absolute; top: 0; left: 0; width: 100%; height: 100%;
                         display: flex; align-items: center; justify-content: center;
@@ -661,7 +657,6 @@ function showClockLoading(status = "") {
                     </div>
                 </div>
 
-                <!-- 狀態說明文字 -->
                 <h3 style="margin: 0 0 6px 0; color: #0f172a; font-size: 18px; font-weight: 600; letter-spacing: 0.3px;">
                     系統打卡處理中
                 </h3>
@@ -669,7 +664,6 @@ function showClockLoading(status = "") {
                     請稍後片刻勿關閉視窗
                 </p>
 
-                <!-- 底部微型科技進度條視覺 -->
                 <div style="width: 100%; max-width: 180px; height: 4px; background: #e2e8f0; border-radius: 2px; margin: 0 auto; overflow: hidden;">
                     <div style="width: 40%; height: 100%; background: #2563eb; border-radius: 2px; animation: proBarMove 1.5s ease-in-out infinite;"></div>
                 </div>
@@ -715,12 +709,17 @@ function showClockLoading(status = "") {
 }
 
 /* =========================================================
-   發送 LINE 自己的訊息
+   發送 LINE 自己的訊息 (含自動重試機制，最多重試 2 次)
 ========================================================= */
-async function sendSelfMessage(record) {
+async function sendSelfMessage(record, retries = 2) {
+    if (typeof liff === "undefined" || !liff.isInClient()) {
+        console.warn("目前不在 LINE App 內，無法使用 liff.sendMessages()");
+        return false;
+    }
+
+    const headerColor = record.status === "下班" ? "#2ecc71" : "#3498db";
+    
     try {
-        if (typeof liff === "undefined" || !liff.isInClient()) return;
-        const headerColor = record.status === "下班" ? "#2ecc71" : "#3498db";
         await liff.sendMessages([{
             type: "flex",
             altText: `【打卡通知】${record.status}成功`,
@@ -751,8 +750,16 @@ async function sendSelfMessage(record) {
                 }
             }
         }]);
+        console.log("LINE 訊息發送成功");
+        return true;
     } catch (error) {
-        console.warn("LINE 訊息傳送失敗，不影響打卡結果:", error);
+        console.error(`LINE 訊息傳送失敗（剩餘重試次數: ${retries}）:`, error);
+        
+        if (retries > 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            return sendSelfMessage(record, retries - 1);
+        }
+        return false;
     }
 }
 
@@ -848,7 +855,6 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
     isClocking = true;
     setButtonsLock(true, "處理中...", "處理中...");
     
-    // 呼叫 SweetAlert2 讀取彈窗
     showClockLoading(isMakeup ? "補打卡中" : (status === "上班" ? "上班打卡中" : "下班打卡中"));
 
     try {
@@ -874,7 +880,6 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
             isMakeup: isMakeup
         };
 
-        // 設定 5 秒逾時
         const response = await fetchWithTimeout(API_ENDPOINT, {
             method: "POST",
             headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -898,12 +903,10 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         const message = String(apiData?.message || "");
         const code = String(apiData?.code || "");
         
-        // 檢查是否為次數超限或明確的失敗訊息
         const isMaxLimit = code === "MAX_LIMIT" || message.includes("上限");
         const isExplicitFail = apiData.success === false || message.includes("失敗") || message.includes("錯誤");
 
         if (isMaxLimit || isExplicitFail) {
-            // 保留次數超限與業務錯誤警語
             await Swal.fire({
                 icon: "warning",
                 title: isMaxLimit ? "已達打卡上限" : "打卡提示",
@@ -912,10 +915,10 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
                 customClass: { popup: "custom-swal-popup" }
             });
         } else {
-            // 正常成功
             const successDate = apiData.date || getTodayString();
             const successTime = apiData.time || new Date().toLocaleTimeString("zh-TW", { hour12: false });
 
+            // 🛡️ 背景發送 LINE 訊息（帶重試機制）
             sendSelfMessage({
                 userName: window.userName,
                 status: status,
@@ -923,7 +926,7 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
                 time: successTime,
                 netType: window.allowRemote ? "異地打卡(GPS)" : "公司網路"
             }).catch(error => {
-                console.warn("背景傳送 LINE 訊息失敗:", error);
+                console.warn("背景傳送 LINE 訊息最終失敗:", error);
             });
 
             await Swal.fire({
@@ -939,7 +942,6 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
         await updateTodayRecords(false);
 
     } catch (error) {
-        // 💡 攔截 5 秒逾時（AbortError）或網路異常：強制視為成功
         console.warn("打卡逾時或網路中斷，啟動 5 秒逾時強制當作成功機制:", error);
 
         const now = new Date();
@@ -954,7 +956,7 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
 
         Swal.close();
 
-        // 走正常成功流程處理
+        // 🛡️ 逾時強制的狀況下，也確保會背景發送 LINE 訊息
         sendSelfMessage({
             userName: window.userName,
             status: status,
@@ -962,7 +964,7 @@ async function performClockIn(status, customDate = "", customTime = "", isMakeup
             time: apiData.time,
             netType: window.allowRemote ? "異地打卡(GPS)" : "公司網路"
         }).catch(err => {
-            console.warn("LINE 背景傳送失敗:", err);
+            console.warn("LINE 背景傳送（Fallback）最終失敗:", err);
         });
 
         await Swal.fire({
