@@ -671,7 +671,7 @@ async function sendSelfMessage(record) {
 
         await liff.sendMessages([{
             type: "flex",
-            altText: `【打卡通知】${safeName} ${safeStatus}成功 (${safeDate} ${safeTime})`,
+            altText: `【打卡通知】${safeStatus}成功 (${safeDate} ${safeTime})`,
             contents: {
                 type: "bubble",
                 header: {
